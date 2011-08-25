@@ -39,6 +39,10 @@ public:
     //    virtual void setCurrent(int num) = 0;
 
 
+    const QString& goFirst();
+    const QString& goLast();
+    const QString& goUp();
+
     inline void setSorting(QDir::SortFlags order) {
         if( _parent.sorting() != order ) {
             _parent.setSorting(order);
@@ -68,6 +72,11 @@ public:
 
 
 private:
+    inline void checkState() {
+        if(_pos==-2)
+            updateOrder();
+    }
+
     QString getPath(const QString &fileName) const;
     void clear();
 

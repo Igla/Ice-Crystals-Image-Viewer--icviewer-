@@ -55,9 +55,11 @@ void setImageFilter(QStringList &filters);
 int main(int argc, char *argv[])
 {
     QApplication app(argc, argv);
+    QCoreApplication::setOrganizationName("Ice Crystals Dev Team");
+    QCoreApplication::setOrganizationDomain("ice-crystals.home");
+    QCoreApplication::setApplicationName("IC Viewer");
     MSettings settings;
     MFileIterator diterator;
-    app.setApplicationName("IC Viewer");
     APP_SETTINGS = &settings;
     APP_FILE_ITERATOR = &diterator;
     initFileIterator(argc,argv);
@@ -81,19 +83,21 @@ void initFileIterator(int argc, char *argv[])
 
     if(argc>1) {
         APP_FILE_ITERATOR->setStartPoint(QString::fromUtf8(argv[argc-1]));
+        QDir::setCurrent(APP_FILE_ITERATOR->currentPath());
     }
 }
 
-
+//Я знаю, что отнюдь не все форматы из этого списка будут работать.
+//Например SVG. Ну, пока оставим как есть
 void setImageFilter(QStringList &filters)
 {
     QList<QByteArray> formats = QImageReader::supportedImageFormats();
 
     for(int i=0;i<formats.size();i++){
         filters << "*."+QString(formats[i].data()).toLower();
-        #ifdef __DEBUG
-            qDebug()<<filters.last();
-        #endif
+//        #ifdef __DEBUG
+//            qDebug()<<filters.last();
+//        #endif
     }
 
 }

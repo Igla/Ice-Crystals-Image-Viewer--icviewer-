@@ -43,6 +43,7 @@
 #include <QFutureWatcher>
 #include <QScrollArea>
 #include <QResizeEvent>
+#include <QActionGroup>
 
 #ifdef __DEBUG
 #include <QDebug>
@@ -53,6 +54,7 @@
 #include "imageviewer.h"
 #include "msettings.h"
 #include "mfileiterator.h"
+#include "customizeviewdialog.h"
 
 extern MSettings *APP_SETTINGS;
 extern MFileIterator *APP_FILE_ITERATOR;
@@ -115,11 +117,16 @@ ImageViewer::ImageViewer():scaleFactor(1.0),scrollValH(0.0f),scrollValV(0.0f)
 
     _lastCursor = cursor();
 
+    loadSortSettings();
+    setGrabState();
     restoreGeometry();
 }
 
 ImageViewer::~ImageViewer()
 {
+    storeSortSettings();
+    storeGrabMode();
+
     APP_SETTINGS->setFitToScreen(fitToWindowAct->isChecked());
 
     APP_SETTINGS->setWindowState(windowState());
@@ -130,10 +137,15 @@ ImageViewer::~ImageViewer()
 }
 
 void ImageViewer::restoreGeometry() {
+   Qt::WindowStates states = APP_SETTINGS->windowState();
     resize(APP_SETTINGS->windowWidth(), APP_SETTINGS->windowHeight());
-    setWindowState(APP_SETTINGS->windowState());
-    if(isFullScreen())
-        setFullScreenMode();
+    if((states&Qt::WindowFullScreen)==Qt::WindowFullScreen) {
+        setWindowState(states^Qt::WindowFullScreen);
+        fullScreenAct->activate(QAction::Trigger);
+        //setFullScreenMode();
+    }
+    else
+        setWindowState(states);
 }
 
 
@@ -155,6 +167,20 @@ void ImageViewer::open()
     }
 }
 
+void ImageViewer::storeScrollProportion()
+{
+    if(scrollArea->horizontalScrollBar()->isVisible()) {
+        scrollValH = scrollArea->horizontalScrollBar()->maximum()-scrollArea->horizontalScrollBar()->minimum();
+        if(scrollValH>0)
+            scrollValH = scrollArea->horizontalScrollBar()->value()/scrollValH;
+    }
+    if(scrollArea->verticalScrollBar()->isVisible()) {
+        scrollValV = scrollArea->verticalScrollBar()->maximum()-scrollArea->verticalScrollBar()->minimum();
+        if(scrollValV>0)
+            scrollValV = scrollArea->verticalScrollBar()->value()/scrollValV;
+    }
+}
+
 void ImageViewer::open(const QString &fileName, bool showErrorMessage)
 {
     if (!fileName.isEmpty()) {
@@ -165,16 +191,7 @@ void ImageViewer::open(const QString &fileName, bool showErrorMessage)
             _loaderTask.waitForFinished();
         }
 
-        if(scrollArea->horizontalScrollBar()->isVisible()) {
-            scrollValH = scrollArea->horizontalScrollBar()->maximum()-scrollArea->horizontalScrollBar()->minimum();
-            if(scrollValH>0)
-                scrollValH = scrollArea->horizontalScrollBar()->value()/scrollValH;
-        }
-        if(scrollArea->verticalScrollBar()->isVisible()) {
-            scrollValV = scrollArea->verticalScrollBar()->maximum()-scrollArea->verticalScrollBar()->minimum();
-            if(scrollValV>0)
-                scrollValV = scrollArea->verticalScrollBar()->value()/scrollValV;
-        }
+        storeScrollProportion();
 
 //#ifdef __DEBUG
 //            qDebug() << "1: " <<scrollArea->horizontalScrollBar()->maximum() << " : " << scrollArea->verticalScrollBar()->maximum();
@@ -364,41 +381,56 @@ void ImageViewer::setZoomLabels() {
     int scalePercents = int(APP_SETTINGS->scaleDelta()*100);
     zoomInAct->setText(tr("Zoom &In (%1%)").arg(scalePercents));
     zoomOutAct->setText(tr("Zoom &Out (%1%)").arg(scalePercents));
+
+    scalePercents = int(APP_SETTINGS->grabScale()*100);
+    grabScaleAct->setText(tr("Scale(%1%)").arg(scalePercents));
 }
 
 void ImageViewer::createActions()
 {
 
     openAct = new QAction(tr("&Open..."), this);
+    openAct->setIcon(QIcon(":/images/16x16/document-open-data.png"));
     openAct->setShortcut(tr("Ctrl+O"));
     connect(openAct, SIGNAL(triggered()), this, SLOT(open()));
 
     printAct = new QAction(tr("&Print..."), this);
+    printAct->setIcon(QIcon(":/images/16x16/document-print.png"));
     printAct->setShortcut(tr("Ctrl+P"));
-    printAct->setEnabled(false);
+//    printAct->setEnabled(false);
     connect(printAct, SIGNAL(triggered()), this, SLOT(print()));
 
     exitAct = new QAction(tr("E&xit"), this);
+    exitAct->setIcon(QIcon(":/images/16x16/application-exit.png"));
     exitAct->setShortcut(tr("Ctrl+Q"));
     connect(exitAct, SIGNAL(triggered()), this, SLOT(close()));
 
+
+    fullScreenAct = new QAction(tr("F&ull Screen Mode"),this);
+    fullScreenAct->setIcon(QIcon(":/images/16x16/view-fullscreen.png"));
+    fullScreenAct->setShortcut(tr("Ctrl+Return"));
+    fullScreenAct->setCheckable(true);
+    connect(fullScreenAct, SIGNAL(triggered()), this, SLOT(changeMode()));
+
     zoomInAct = new QAction(this);
+    zoomInAct->setIcon(QIcon(":/images/16x16/zoom-in.png"));
     zoomInAct->setShortcut(tr("Ctrl++"));
-    zoomInAct->setEnabled(false);
+//    zoomInAct->setEnabled(false);
     connect(zoomInAct, SIGNAL(triggered()), this, SLOT(zoomIn()));
 
     zoomOutAct = new QAction(this);
+    zoomOutAct->setIcon(QIcon(":/images/16x16/zoom-out.png"));
     zoomOutAct->setShortcut(tr("Ctrl+-"));
-    zoomOutAct->setEnabled(false);
+//    zoomOutAct->setEnabled(false);
     connect(zoomOutAct, SIGNAL(triggered()), this, SLOT(zoomOut()));
 
-    setZoomLabels();
-
     normalSizeAct = new QAction(tr("&Normal Size"), this);
+    normalSizeAct->setIcon(QIcon(":/images/16x16/zoom-original.png"));
     normalSizeAct->setShortcut(tr("Ctrl+S"));
     connect(normalSizeAct, SIGNAL(triggered()), this, SLOT(normalSize()));
 
     fitToWindowAct = new QAction(tr("&Fit to Window"), this);
+    fitToWindowAct->setIcon(QIcon(":/images/16x16/zoom-fit-best.png"));
     fitToWindowAct->setCheckable(true);
     fitToWindowAct->setShortcut(tr("Ctrl+F"));
     connect(fitToWindowAct, SIGNAL(triggered()), this, SLOT(fitToWindow()));
@@ -408,6 +440,97 @@ void ImageViewer::createActions()
 
     aboutQtAct = new QAction(tr("About &Qt"), this);
     connect(aboutQtAct, SIGNAL(triggered()), qApp, SLOT(aboutQt()));
+
+    // Sort actions
+    sortUnsortAct = new QAction(tr("NoSort"),this);
+    sortUnsortAct->setCheckable(true);
+    connect(sortUnsortAct, SIGNAL(triggered()), this, SLOT(sortUnsort()));
+
+    sortNameAct = new QAction(tr("Name"),this);
+    sortNameAct->setCheckable(true);
+    connect(sortNameAct, SIGNAL(triggered()), this, SLOT(sortByName()));
+
+    sortTimeAct = new QAction(tr("Time"),this);
+    sortTimeAct->setCheckable(true);
+    connect(sortTimeAct, SIGNAL(triggered()), this, SLOT(sortByTime()));
+
+    sortSizeAct = new QAction(tr("Size"),this);
+    sortSizeAct->setCheckable(true);
+    connect(sortSizeAct, SIGNAL(triggered()), this, SLOT(sortBySize()));
+
+    sortTypeAct = new QAction(tr("Type"),this);
+    sortTypeAct->setCheckable(true);
+    connect(sortTypeAct, SIGNAL(triggered()), this, SLOT(sortByType()));
+
+    sortGroup = new QActionGroup(this);
+    sortGroup->addAction(sortNameAct);
+    sortGroup->addAction(sortTimeAct);
+    sortGroup->addAction(sortTypeAct);
+    sortGroup->addAction(sortSizeAct);
+    sortGroup->addAction(sortUnsortAct);
+
+
+    sortReversedAct = new QAction(tr("Reverse"),this);
+    sortReversedAct->setCheckable(true);
+    connect(sortReversedAct, SIGNAL(triggered()), this, SLOT(sortReverse()));
+
+    sortCaseSensetiveAct = new QAction(tr("Case Sensetive"),this);
+    sortCaseSensetiveAct->setCheckable(true);
+    connect(sortCaseSensetiveAct, SIGNAL(triggered()), this, SLOT(sortCaseSensetive()));
+
+
+
+    grabDefaultAct = new QAction(tr("Default"),this);
+    grabDefaultAct->setCheckable(true);
+    connect(grabDefaultAct, SIGNAL(triggered()), this, SLOT(setGrabStateDefault()));
+    grabFitToWindowAct = new QAction(tr("Fit To Window"),this);
+    grabFitToWindowAct->setCheckable(true);
+    connect(grabFitToWindowAct, SIGNAL(triggered()), this, SLOT(setGrabStateFitToWindow()));
+    grabNormalSizeAct = new QAction(tr("Normal Size"),this);
+    grabNormalSizeAct->setCheckable(true);
+    connect(grabNormalSizeAct, SIGNAL(triggered()), this, SLOT(setGrabStateNormalSize()));
+    grabScaleAct = new QAction(this);
+    grabScaleAct->setCheckable(true);
+    connect(grabScaleAct, SIGNAL(triggered()), this, SLOT(setGrabStateScale()));
+
+    grabGroup = new QActionGroup(this);
+    grabGroup->addAction(grabDefaultAct);
+    grabGroup->addAction(grabNormalSizeAct);
+    grabGroup->addAction(grabFitToWindowAct);
+    grabGroup->addAction(grabScaleAct);
+
+    customizeViewAct = new QAction(tr("Customize"),this);
+    connect(customizeViewAct, SIGNAL(triggered()), this, SLOT(customizeView()));
+
+
+    goNextAct = new QAction(tr("&Next"), this);
+    goNextAct->setIcon(QIcon(":/images/16x16/go-next.png"));
+    goNextAct->setShortcut(tr("Space"));
+    connect(goNextAct, SIGNAL(triggered()), this, SLOT(goNext()));
+
+    goPreviousAct = new QAction(tr("&Previous"), this);
+    goPreviousAct->setIcon(QIcon(":/images/16x16/go-previous.png"));
+    goPreviousAct->setShortcut(tr("Backspace"));
+    connect(goPreviousAct, SIGNAL(triggered()), this, SLOT(goPrevious()));
+
+    goFirstAct = new QAction(tr("&First"), this);
+    goFirstAct->setShortcut(tr("Home"));
+    connect(goFirstAct, SIGNAL(triggered()), this, SLOT(goFirst()));
+
+    goLastAct = new QAction(tr("&Last"), this);
+    goLastAct->setShortcut(tr("End"));
+    connect(goLastAct, SIGNAL(triggered()), this, SLOT(goLast()));
+
+
+    goUpAct = new QAction(tr("&Up"), this);
+    goUpAct->setIcon(QIcon(":/images/16x16/go-up.png"));
+    goUpAct->setShortcut(tr("Alt+Up"));
+    connect(goUpAct, SIGNAL(triggered()), this, SLOT(goUp()));
+
+    goStartAct = new QAction(tr("&Start Page"), this);
+    connect(goStartAct, SIGNAL(triggered()), this, SLOT(goStart()));
+
+    setZoomLabels();
 }
 
 void ImageViewer::createMenus()
@@ -418,12 +541,45 @@ void ImageViewer::createMenus()
     fileMenu->addSeparator();
     fileMenu->addAction(exitAct);
 
+    sortMenu = new QMenu(tr("Sort"),this);
+    sortMenu->addAction(sortNameAct);
+    sortMenu->addAction(sortSizeAct);
+    sortMenu->addAction(sortTimeAct);
+    sortMenu->addAction(sortTypeAct);
+    sortMenu->addAction(sortUnsortAct);
+    sortMenu->addSeparator();
+    sortMenu->addAction(sortReversedAct);
+    sortMenu->addAction(sortCaseSensetiveAct);
+
+    grabMenu = new QMenu(tr("Grab Mode"),this);
+    grabMenu->addAction(grabDefaultAct);
+    grabMenu->addAction(grabNormalSizeAct);
+    grabMenu->addAction(grabFitToWindowAct);
+    grabMenu->addAction(grabScaleAct);
+
+
     viewMenu = new QMenu(tr("&View"), this);
+    viewMenu->addAction(customizeViewAct);
+    viewMenu->addAction(fullScreenAct);
+    viewMenu->addSeparator();
+    viewMenu->addMenu(grabMenu);
+    viewMenu->addMenu(sortMenu);
+    viewMenu->addSeparator();
     viewMenu->addAction(zoomInAct);
     viewMenu->addAction(zoomOutAct);
     viewMenu->addAction(normalSizeAct);
     viewMenu->addSeparator();
     viewMenu->addAction(fitToWindowAct);
+    \
+    goMenu = new QMenu(tr("&Go"),this);
+    goMenu->addAction(goFirstAct);
+    goMenu->addAction(goNextAct);
+    goMenu->addAction(goPreviousAct);
+    goMenu->addAction(goLastAct);
+    goMenu->addSeparator();
+    goMenu->addAction(goUpAct);
+    goMenu->addSeparator();
+    goMenu->addAction(goStartAct);
 
     helpMenu = new QMenu(tr("&Help"), this);
     helpMenu->addAction(aboutAct);
@@ -431,6 +587,7 @@ void ImageViewer::createMenus()
 
     menuBar()->addMenu(fileMenu);
     menuBar()->addMenu(viewMenu);
+    menuBar()->addMenu(goMenu);
     menuBar()->addMenu(helpMenu);
 }
 
@@ -502,28 +659,29 @@ void ImageViewer::moveScroll(QScrollBar *bar,int delta)
 
 void ImageViewer::move(const QPoint &delta)
 {
-    moveScroll(scrollArea->horizontalScrollBar(),delta.x());
-    moveScroll(scrollArea->verticalScrollBar(),delta.y());
-//    scrollArea->update();
+    if(grabState.move) {
+        (this->*grabState.move)(delta);
+    }
 }
 
 bool ImageViewer::isMooving() const
 {
-    return _lastCursor.handle()!=cursor().handle();
+    if(grabState.isMoving)
+        return (this->*grabState.isMoving)();
+    return false;
 }
 
 void ImageViewer::startMooving()
 {
-    if(!isMooving()) {
-        _lastCursor = cursor();
-        setCursor(QCursor(Qt::ClosedHandCursor));
+    if(!isMooving() && grabState.startMoving) {
+        (this->*grabState.startMoving)();
     }
 }
 
 void ImageViewer::endMooving()
 {
-    if(isMooving()) {
-        setCursor(_lastCursor);
+    if(isMooving() && grabState.endMoving) {
+        (this->*grabState.endMoving)();
     }
 }
 
@@ -532,67 +690,73 @@ void ImageViewer::keyPressEvent(QKeyEvent * event)
     if(event->modifiers()==Qt::NoModifier) {
         switch(event->key()){
             case Qt::Key_Space:
+              if(isFullScreen()) {
 //            case Qt::Key_Right:
-                if(APP_FILE_ITERATOR->haveNext())
-                    open(APP_FILE_ITERATOR->next());
-                event->accept();
+//                if(APP_FILE_ITERATOR->haveNext())
+                    goNextAct->activate(QAction::Trigger);
+//                    open(APP_FILE_ITERATOR->next());
+//                event->accept();
+              }
             break;
             case Qt::Key_Backspace:
 //            case Qt::Key_Left:
-                if(APP_FILE_ITERATOR->havePrevious())
-                    open(APP_FILE_ITERATOR->previous());
-                event->accept();
+//                if(APP_FILE_ITERATOR->havePrevious())
+                    goPreviousAct->activate(QAction::Trigger);
+//                    open(APP_FILE_ITERATOR->previous());
+//                event->accept();
             break;
 #ifndef __LOAD_IN_MAIN_THREAD
             case Qt::Key_Escape:
                 _loaderTask.cancel();
-                event->accept();
+//                event->accept();
             break;
 #endif
         }
-        if(event->isAccepted())
-            return;
+//        if(event->isAccepted())
+//            return;
     }
     else {
         if((event->modifiers() == Qt::ControlModifier)) { // == Qt::ControlModifier) {
-            if(event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter) {
+            if( (isFullScreen() && event->key() == Qt::Key_Return)) {
 //                case Qt::Key_F:
-                changeMode();
-                event->accept();
+//                changeMode();
+//                event->accept();
+                fullScreenAct->activate(QAction::Trigger);
            }
            else {
                 if(isFullScreen()) {
                     switch(event->key()) {
                         case Qt::Key_Q:
                             exitAct->activate(QAction::Trigger);
-                            event->accept();
+//                            event->accept();
                             break;
                         case Qt::Key_S:
                             normalSizeAct->activate(QAction::Trigger);
-                            event->accept();
+//                            event->accept();
                             break;
                         case Qt::Key_O:
                             openAct->activate(QAction::Trigger);
-                            event->accept();
+//                            event->accept();
                             break;
                         case Qt::Key_F:
                             fitToWindowAct->activate(QAction::Trigger);
-                            event->accept();
+//                            event->accept();
                             break;
                         case Qt::Key_Plus:
                             zoomInAct->activate(QAction::Trigger);
-                            event->accept();
+//                            event->accept();
                             break;
                         case Qt::Key_Minus:
                             zoomOutAct->activate(QAction::Trigger);
-                            event->accept();
+//                            event->accept();
                             break;
                     }
                 }
            }
         }
     }
-    QMainWindow::keyPressEvent(event);
+    event->accept();
+//    QMainWindow::keyPressEvent(event);
 }
 
 void ImageViewer::changeMode()
@@ -633,4 +797,257 @@ void ImageViewer::mouseDoubleClickEvent(QMouseEvent *ev)
 {
     changeMode();
     ev->accept();
+}
+
+
+void ImageViewer::loadSortSettings()
+{
+    QDir::SortFlags flags = APP_SETTINGS->sorting();
+
+    //Порядок важен
+    if((flags&QDir::Unsorted)==QDir::Unsorted)
+        sortUnsortAct->setChecked(true);
+    else
+    if((flags&QDir::Name)==QDir::Name)
+        sortNameAct->setChecked(true);
+    else
+    if((flags&QDir::Size)==QDir::Size)
+        sortSizeAct->setChecked(true);
+    else
+    if((flags&QDir::Type)==QDir::Type)
+        sortTypeAct->setChecked(true);
+    else
+    if((flags&QDir::Time)==QDir::Time)
+        sortTimeAct->setChecked(true);    
+
+    if((flags&QDir::Reversed)==QDir::Reversed)
+        sortReversedAct->setChecked(true);
+
+    if((flags&QDir::IgnoreCase)!=QDir::IgnoreCase)
+        sortCaseSensetiveAct->setChecked(true);
+}
+
+void ImageViewer::storeSortSettings()
+{
+    APP_SETTINGS->setSorting(APP_FILE_ITERATOR->sorting());
+}
+
+void ImageViewer::storeGrabMode()
+{
+    MSettings::GrabMode mode;
+    if(grabNormalSizeAct->isChecked())
+        mode = MSettings::GrabNormalSize;
+    else
+    if(grabScaleAct->isChecked())
+        mode = MSettings::GrabScale;
+    else
+    if(grabFitToWindowAct->isChecked())
+        mode = MSettings::GrabFitToWindow;
+    else
+        mode = MSettings::GrabDefault;
+    APP_SETTINGS->setGrabMode(mode);
+}
+
+
+void ImageViewer::sortUnsort() {
+    APP_FILE_ITERATOR->setSorting((APP_FILE_ITERATOR->sorting() & (~(QDir::Type|QDir::Size|QDir::Name|QDir::Time|QDir::Unsorted))) | QDir::Unsorted);
+}
+
+void ImageViewer::sortByName()
+{
+    APP_FILE_ITERATOR->setSorting((APP_FILE_ITERATOR->sorting() & (~(QDir::Type|QDir::Size|QDir::Name|QDir::Time|QDir::Unsorted))) | QDir::Name);
+}
+
+void ImageViewer::sortByTime()
+{
+    APP_FILE_ITERATOR->setSorting((APP_FILE_ITERATOR->sorting() & (~(QDir::Type|QDir::Size|QDir::Name|QDir::Time|QDir::Unsorted))) | QDir::Time);
+}
+
+void ImageViewer::sortBySize()
+{
+    APP_FILE_ITERATOR->setSorting((APP_FILE_ITERATOR->sorting() & (~(QDir::Type|QDir::Size|QDir::Name|QDir::Time|QDir::Unsorted))) | QDir::Size);
+}
+
+void ImageViewer::sortByType()
+{
+    APP_FILE_ITERATOR->setSorting((APP_FILE_ITERATOR->sorting() & (~(QDir::Type|QDir::Size|QDir::Name|QDir::Time|QDir::Unsorted))) | QDir::Type);
+}
+
+void ImageViewer::sortReverse()
+{
+    APP_FILE_ITERATOR->setSorting(APP_FILE_ITERATOR->sorting()^QDir::Reversed);
+}
+
+void ImageViewer::sortCaseSensetive()
+{
+    APP_FILE_ITERATOR->setSorting(APP_FILE_ITERATOR->sorting()^QDir::IgnoreCase);
+}
+
+void ImageViewer::setGrabState()
+{
+    switch(APP_SETTINGS->grabMode()) {
+        case MSettings::GrabNormalSize:
+            grabNormalSizeAct->activate(QAction::Trigger);
+        break;
+        case MSettings::GrabFitToWindow:
+            grabFitToWindowAct->activate(QAction::Trigger);
+        break;
+        case MSettings::GrabScale:
+            grabScaleAct->activate(QAction::Trigger);
+        break;
+        default:
+            grabDefaultAct->activate(QAction::Trigger);
+    }
+
+//    grabDefaultAct->setChecked(true);
+
+}
+
+void ImageViewer::setGrabStateDefault()
+{
+    endMooving();
+    grabState.move = &ImageViewer::moveDefault;
+    grabState.isMoving = &ImageViewer::isMoovingDefault;
+    grabState.startMoving = &ImageViewer::startMoovingDefault;
+    grabState.endMoving = &ImageViewer::endMoovingDefault;
+}
+
+void ImageViewer::setGrabStateNormalSize()
+{
+    endMooving();
+    grabState.move = &ImageViewer::moveDefault;
+    grabState.isMoving = &ImageViewer::isMoovingDefault;
+    grabState.startMoving = &ImageViewer::startMoovingNormalSize;
+    grabState.endMoving = &ImageViewer::endMoovingScale;
+}
+
+void ImageViewer::setGrabStateFitToWindow()
+{
+    endMooving();
+    grabState.move = 0;
+    grabState.isMoving = &ImageViewer::isMoovingDefault;
+    grabState.startMoving = &ImageViewer::startMoovingFitToWindow;
+    grabState.endMoving = &ImageViewer::endMoovingFitToWindow;
+}
+
+void ImageViewer::setGrabStateScale()
+{
+    endMooving();
+    grabState.move = &ImageViewer::moveDefault;
+    grabState.isMoving = &ImageViewer::isMoovingDefault;
+    grabState.startMoving = &ImageViewer::startMoovingScale;
+    grabState.endMoving = &ImageViewer::endMoovingScale;
+}
+
+void ImageViewer::moveDefault(const QPoint &delta)
+{
+    moveScroll(scrollArea->horizontalScrollBar(),delta.x());
+    moveScroll(scrollArea->verticalScrollBar(),delta.y());
+}
+
+bool ImageViewer::isMoovingDefault() const
+{
+    return _lastCursor.handle()!=cursor().handle();
+}
+
+void ImageViewer::startMoovingDefault()
+{
+    _lastCursor = cursor();
+    setCursor(QCursor(Qt::ClosedHandCursor));
+}
+
+void ImageViewer::endMoovingDefault()
+{
+    setCursor(_lastCursor);
+}
+
+void ImageViewer::startMoovingFitToWindow()
+{
+    storeScrollProportion();
+    startMoovingDefault();
+//    fitToWindowAct->setChecked(true);
+    fitToWindowAct->activate(QAction::Trigger);
+}
+
+void ImageViewer::endMoovingFitToWindow()
+{
+    endMoovingDefault();
+//    fitToWindowAct->setChecked(false);
+    fitToWindowAct->activate(QAction::Trigger);
+}
+
+void ImageViewer::startMoovingNormalSize()
+{
+    _oldScaleFactor = scaleFactor;
+    scaleFactor = 1.0;
+    startMoovingDefault();
+    setZoom();
+}
+
+void ImageViewer::startMoovingScale()
+{
+    _oldScaleFactor = scaleFactor;
+    scaleFactor = APP_SETTINGS->grabScale();
+    startMoovingDefault();
+    setZoom();
+
+}
+
+void ImageViewer::endMoovingScale()
+{
+    storeScrollProportion();
+    scaleFactor = _oldScaleFactor;
+    endMoovingDefault();
+    setZoom();
+}
+
+void ImageViewer::customizeView()
+{
+    CustomizeViewDialog dlg;
+    dlg.init(*APP_SETTINGS);
+    if(dlg.exec()==QDialog::Accepted) {
+        acceptCustomizeDlg(dlg);
+    }
+}
+
+void ImageViewer::acceptCustomizeDlg(const CustomizeViewDialog &dlg)
+{
+    APP_SETTINGS->setScaleLimit(dlg.maxScale());
+    APP_SETTINGS->setScaleDelta(dlg.scaleStep());
+    APP_SETTINGS->setGrabScale(dlg.grabScale());
+
+    setZoomLabels();
+}
+
+void ImageViewer::goFirst()
+{
+    open(APP_FILE_ITERATOR->goFirst());
+}
+
+void ImageViewer::goLast()
+{
+    open(APP_FILE_ITERATOR->goLast());
+}
+
+void ImageViewer::goNext()
+{
+    if(APP_FILE_ITERATOR->haveNext())
+        open(APP_FILE_ITERATOR->next());
+}
+
+void ImageViewer::goPrevious()
+{
+    if(APP_FILE_ITERATOR->havePrevious())
+        open(APP_FILE_ITERATOR->previous());
+}
+
+void ImageViewer::goUp()
+{
+    open(APP_FILE_ITERATOR->goUp());
+}
+
+void ImageViewer::goStart()
+{
+    APP_FILE_ITERATOR->setStartPoint(QDir::currentPath());
+    open(APP_FILE_ITERATOR->current());
 }

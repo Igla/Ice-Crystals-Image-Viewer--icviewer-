@@ -30,9 +30,8 @@ bool MFileIterator::setStartPoint(const QString &fileName)
     if(finfo.isDir()) {
         _parent.setPath(fileName);
         getList();
-        if(_list.count()>0) {
-            _current = getPath(_list.at(_pos = 0));
-        }
+        _current = _list.isEmpty()?QString():getPath(_list.at(_pos = 0));
+
     }
     else {
         _parent.setPath(finfo.path());
@@ -43,10 +42,7 @@ bool MFileIterator::setStartPoint(const QString &fileName)
 
 bool MFileIterator::haveNext()
 {
-    if(_pos==-2) {
-        updateOrder();
-    }
-
+    checkState();
     return _pos+1<_list.size();
 }
 
@@ -57,10 +53,7 @@ const QString& MFileIterator::next()
 
 bool MFileIterator::havePrevious()
 {
-    if(_pos==-2) {
-        updateOrder();
-    }
-
+    checkState();
     return _pos>=1;
 }
 
@@ -70,7 +63,7 @@ const QString& MFileIterator::previous()
 }
 
 inline QString MFileIterator::getPath(const QString &fileName) const {
-    return _parent.path() + QDir::separator() + fileName;
+    return fileName.isNull()?QString():_parent.path() + QDir::separator() + fileName;
 }
 
 //inline void MFileIterator::setSorting(QDir::SortFlags order)
@@ -93,3 +86,31 @@ void MFileIterator::clear()
     _list.clear();
     _current = QString();
 }
+
+const QString& MFileIterator::goFirst()
+{
+    checkState();
+    if(_list.size()>0) {
+        _pos = 0;
+        return _current = getPath(_list.first());
+    }
+    return _current = QString();
+}
+
+const QString& MFileIterator::goLast()
+{
+    checkState();
+    if(_list.size()>0) {
+        _pos = _list.size()-1;
+        return _current = getPath(_list.last());
+    }
+    return _current = QString();
+}
+
+const QString& MFileIterator::goUp()
+{
+    _parent.cdUp();
+    setStartPoint(_parent.path());
+    return current();
+}
+

@@ -52,6 +52,7 @@
 
 QT_BEGIN_NAMESPACE
 class QAction;
+class QActionGroup;
 class QLabel;
 class QMenu;
 class QScrollArea;
@@ -63,6 +64,18 @@ class QResizeEvent;
 //class QFutureWatcher;
 class QImage;
 QT_END_NAMESPACE
+
+class ImageViewer;
+class CustomizeViewDialog;
+
+typedef struct GrabState {
+  void (ImageViewer::*move)(const QPoint &delta);
+  bool (ImageViewer::*isMoving)() const;
+  void (ImageViewer::*startMoving)();
+  void (ImageViewer::*endMoving)();
+
+  GrabState():move(0),isMoving(0),startMoving(0),endMoving(0) { }
+} GrabState;
 
 //! [0]
 class ImageViewer : public QMainWindow, public MMover
@@ -78,7 +91,7 @@ public:
     bool isMooving() const;
     void startMooving();
     void endMooving();
-    void changeMode();
+
 protected:
     void keyPressEvent(QKeyEvent* event);
 //    void keyReleaseEvent(QKeyEvent *event);
@@ -94,9 +107,35 @@ private slots:
     void fitToWindow();
     void about();
 
+    void changeMode();
+
 #ifndef __LOAD_IN_MAIN_THREAD
     void imageLoaded();
 #endif
+
+    //sort slots
+    void sortUnsort(); //названьечко
+    void sortByName();
+    void sortByTime();
+    void sortBySize();
+    void sortByType();
+    void sortReverse();
+    void sortCaseSensetive();
+
+    //Go slots
+    void goFirst();
+    void goLast();
+    void goNext();
+    void goPrevious();
+    void goUp();
+    void goStart();
+
+    void setGrabStateDefault();
+    void setGrabStateNormalSize();
+    void setGrabStateFitToWindow();
+    void setGrabStateScale();
+
+    void customizeView();
 
 private:
     void open(const QString &fileName, bool showErrorMessage=false);
@@ -106,6 +145,11 @@ private:
 #ifndef __LOAD_IN_MAIN_THREAD
     void loadImage(const QString &fileName);
 #endif
+    void setGrabState();
+    void loadSortSettings();
+    void storeSortSettings();
+    void storeGrabMode();
+
     void restoreGeometry();
     void setZoomLabels();
 
@@ -124,13 +168,32 @@ private:
     void scaleImage(double factor);
     void adjustScrollBar(QScrollBar *scrollBar, double factor);
 
+    void moveDefault(const QPoint &delta);
+    bool isMoovingDefault() const;
+    void startMoovingDefault();
+    void endMoovingDefault();
+
+    void startMoovingFitToWindow();
+    void endMoovingFitToWindow();
+
+    void startMoovingNormalSize();
+
+    void startMoovingScale();
+    void endMoovingScale();
+
+    void storeScrollProportion();
+
+    void acceptCustomizeDlg(const CustomizeViewDialog &dlg);
+
     MMovingLabel *imageLabel;
     QScrollArea *scrollArea;
-    double scaleFactor;
+    double scaleFactor,_oldScaleFactor;
 
 #ifndef QT_NO_PRINTER
     QPrinter printer;
 #endif
+
+    GrabState grabState;
 
     QAction *openAct;
     QAction *printAct;
@@ -141,6 +204,36 @@ private:
     QAction *fitToWindowAct;
     QAction *aboutAct;
     QAction *aboutQtAct;
+
+    QAction *customizeViewAct;
+
+    QActionGroup *sortGroup;
+    QAction *sortUnsortAct;
+    QAction *sortNameAct;
+    QAction *sortSizeAct;
+    QAction *sortTimeAct;
+    QAction *sortTypeAct;
+    QAction *sortReversedAct;
+    QAction *sortCaseSensetiveAct;
+
+    QActionGroup *grabGroup;
+    QAction *grabDefaultAct;
+    QAction *grabFitToWindowAct;
+    QAction *grabNormalSizeAct;
+    QAction *grabScaleAct;
+
+    QAction *goFirstAct;
+    QAction *goLastAct;
+    QAction *goNextAct;
+    QAction *goPreviousAct;
+    QAction *goUpAct;
+    QAction *goStartAct;
+
+    QAction *fullScreenAct;
+
+    QMenu *sortMenu;
+    QMenu *goMenu;
+    QMenu *grabMenu;
 
     QMenu *fileMenu;
     QMenu *viewMenu;

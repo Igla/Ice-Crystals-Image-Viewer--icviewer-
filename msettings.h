@@ -12,10 +12,18 @@
 #include "mfileiterator.h"
 class QSettings;
 
+#define SCALE_LIMIT_MIN 3
 
 class MSettings
 {
 public:
+    enum GrabMode {
+        GrabDefault,
+        GrabNormalSize,
+        GrabScale,
+        GrabFitToWindow
+    };
+
     //useGlobalSettings - принудительно загрузить глобальные настройкил
     MSettings(bool useGlobalSettings=false);
 
@@ -33,11 +41,48 @@ public:
         }
     }
 
+    //шаг масштабирования в режиме увеличения по нажатию мыши
+    inline float grabScale() const { return _grabScale; }
+    inline void setGrabScale(float scale) {
+        if(scale>scaleLimit())
+            scale = scaleLimit();
+        if(_grabScale!=scale) {
+            _grabScale = scale;
+            setChanged();
+        }
+    }
+
+    inline GrabMode grabMode() const { return _grabMode; }
+    inline void setGrabMode(GrabMode mode) {
+        if(GrabMode()!=mode) {
+            _grabMode = mode;
+            setChanged();
+        }
+    }
+
+    inline static GrabMode getGrabMode(int mode) {
+        GrabMode ret;
+        switch(mode) {
+            case GrabNormalSize:
+                ret = GrabNormalSize;
+            break;
+            case GrabScale:
+                ret = GrabScale;
+            break;
+            case GrabFitToWindow:
+                ret = GrabFitToWindow;
+            break;
+            default:
+                ret = GrabDefault;
+        }
+        return ret;
+    }
+
     //максимальное увеличение. Так, костыль в связи с нежеланием копаться
     //в способах выделение памяти при масштабировании QLabel
     inline float scaleLimit() const { return _scaleLimit; }
     inline void setScaleLimit(float limit) {
-        if(_scaleLimit!=limit && limit>3) {
+        if(_scaleLimit!=limit && limit>=SCALE_LIMIT_MIN) {
             _scaleLimit= limit;
             setChanged();
         }
@@ -136,11 +181,11 @@ private:
     QDir::SortFlags _sorting;
     Qt::WindowStates _windowState;
     int _memoryLimit;
-    float _scaleLimit, _scaleDelta,_mouseGrabSpeed;
+    float _scaleLimit, _scaleDelta,_mouseGrabSpeed, _grabScale;
     int _windowWidth, _windowHeight;
 
     bool _fitToScreen;
-
+    GrabMode _grabMode;
 
     bool _changeFlag;
 };

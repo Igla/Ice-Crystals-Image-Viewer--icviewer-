@@ -48,9 +48,16 @@ static const QString ITEM_WINDOW_STATE("window_state");
 static const QString ITEM_FIT_TO_SCREEN("fit_to_screen");
 #define DEFAULT_FIT_TO_SCREEN false
 
+static const QString ITEM_GRAB_SCALE("grab_scale");
+#define DEFAULT_GRAB_SCALE 200
+
+static const QString ITEM_GRAB_MODE("grab_mode");
+#define DEFAULT_GRAB_MODE MSettings::GrabDefault
+
 MSettings::MSettings(bool useGlobalSettings):_changeFlag(false)
 {
     QFileInfo f(USER_SETTINGS_PATH);
+    #if defined(Q_OS_UNIX)
     if(!useGlobalSettings &&/*f.exists() &&*/ f.isReadable()) {
         QSettings s(USER_SETTINGS_PATH,QSettings::IniFormat);
         loadSettings(s);
@@ -59,6 +66,10 @@ MSettings::MSettings(bool useGlobalSettings):_changeFlag(false)
         QSettings s("/etc/ice-crystals/iciv.cnf", QSettings::IniFormat);
         loadSettings(s);
     }
+    #else
+        QSettings s;
+        loadSettings(s);
+    #endif
 
 }
 
@@ -66,8 +77,13 @@ void MSettings::loadSettings(const QSettings &settings)
 {
      _scaleDelta = (float)settings.value(ITEM_SCALE_DELTA,DEFAULT_SCALE_DELTA).toInt()/100;
      _scaleLimit = (float)settings.value(ITEM_SCALE_LIMIT,DEFAULT_SCALE_LIMIT).toInt()/100;
-     if(_scaleLimit<3)
-         _scaleLimit = 3;
+     if(_scaleLimit<SCALE_LIMIT_MIN)
+         _scaleLimit = SCALE_LIMIT_MIN;
+     _grabScale = (float)settings.value(ITEM_GRAB_SCALE,DEFAULT_GRAB_SCALE).toInt()/100;
+     if(_grabScale>_scaleLimit)
+        _grabScale = _scaleLimit;
+     _grabMode = getGrabMode(settings.value(ITEM_GRAB_MODE,DEFAULT_GRAB_MODE).toInt());
+
      _memoryLimit = settings.value(ITEM_MEMORY_LIMIT,DEFAULT_MEMORY_LIMIT).toInt();
      _mouseGrabSpeed = settings.value(ITEM_MOUSE_GRAB_SPEED,DEFAULT_MOUSE_SPEED).toFloat();
      _sorting = getSortFlags(settings.value(ITEM_SORT_ORDER,DEFAULT_SORT_ORDER).toInt());
@@ -93,9 +109,15 @@ void MSettings::storeUserSettings() const
             d.mkpath(".");
     }
 
+#if defined(Q_OS_UNIX)
     QSettings settings(USER_SETTINGS_PATH,QSettings::IniFormat);
+#else
+    QSettings settings;
+#endif
     settings.setValue(ITEM_SCALE_DELTA,(int)(scaleDelta()*100));
     settings.setValue(ITEM_SCALE_LIMIT,(int)(scaleLimit()*100));
+    settings.setValue(ITEM_GRAB_SCALE,(int)(grabScale()*100));
+    settings.setValue(ITEM_GRAB_MODE,(int)(grabMode()));
     settings.setValue(ITEM_MEMORY_LIMIT,memoryLimit());
     settings.setValue(ITEM_MOUSE_GRAB_SPEED,mouseGrabSpeed());
     settings.setValue(ITEM_SORT_ORDER,int(sorting()));
@@ -116,7 +138,8 @@ QDir::SortFlags MSettings::getSortFlags(int value)
 {
     QDir::SortFlags ret;
     if(value == QDir::NoSort) {
-        ret = QDir::NoSort;
+//        ret = QDir::NoSort;
+        ret = QDir::Unsorted;
     }
     else {
         if((value & QDir::Name) == QDir::Name)
@@ -147,9 +170,10 @@ QDir::SortFlags MSettings::getSortFlags(int value)
             ret |= QDir::IgnoreCase;
 
 
-        if((value & QDir::LocaleAware) == QDir::LocaleAware)
-            ret |= QDir::LocaleAware;
+//        if((value & QDir::LocaleAware) == QDir::LocaleAware)
+//            ret |= QDir::LocaleAware;
     }
+    ret |= QDir::LocaleAware;
 
     return ret;
 }

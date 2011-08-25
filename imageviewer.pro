@@ -2,12 +2,14 @@ HEADERS       = imageviewer.h \
     msettings.h \
     mmover.h \
     mmovinglabel.h \
-    mfileiterator.h
+    mfileiterator.h \
+    customizeviewdialog.h
 SOURCES       = imageviewer.cpp \
                 main.cpp \
     msettings.cpp \
     mmovinglabel.cpp \
-    mfileiterator.cpp
+    mfileiterator.cpp \
+    customizeviewdialog.cpp
 
 # install
 #target.path = $$[QT_INSTALL_EXAMPLES]/widgets/imageviewer
@@ -20,7 +22,7 @@ TARGET  =   icviewer
 symbian: include($$PWD/../../symbianpkgrules.pri)
 
 #Symbian has built-in component named imageviewer so we use different target
-symbian: TARGET = imageviewerexample
+#symbian: TARGET = imageviewerexample
 
 wince*: {
    DEPLOYMENT_PLUGIN += qjpeg qmng qgif
@@ -36,3 +38,9 @@ simulator: warning(This example might not fully work on Simulator platform)
 debug {
     DEFINES += __DEBUG
 }
+
+FORMS += \
+    customizeviewdialog.ui
+
+RESOURCES += \
+    images.qrc
