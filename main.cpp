@@ -85,6 +85,8 @@ void initFileIterator(int argc, char *argv[])
         APP_FILE_ITERATOR->setStartPoint(QString::fromUtf8(argv[argc-1]));
         QDir::setCurrent(APP_FILE_ITERATOR->currentPath());
     }
+    else
+       APP_FILE_ITERATOR->setStartPoint(QDir::currentPath());
 }
 
 //Я знаю, что отнюдь не все форматы из этого списка будут работать.

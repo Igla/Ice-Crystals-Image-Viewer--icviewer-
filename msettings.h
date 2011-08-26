@@ -154,10 +154,19 @@ public:
     }
 
     // Нужно ли подгонять изображение к размеру окна
-    inline bool fitToScreen() const { return _fitToScreen; }
+    inline bool fitToScreen() const { return _fitToScreen==1; }
     inline void setFitToScreen(bool flag) {
         if(fitToScreen()!=flag ) {
-            _fitToScreen = flag;
+            _fitToScreen = flag?1:0;
+            setChanged();
+        }
+    }
+
+    // Нужно ли подгонять изображение к размеру окна
+    inline bool fitToImage() const { return _fitToScreen==2; }
+    inline void setFitToImage(bool flag) {
+        if(fitToImage()!=flag ) {
+            _fitToScreen = flag?2:0;
             setChanged();
         }
     }
@@ -184,7 +193,7 @@ private:
     float _scaleLimit, _scaleDelta,_mouseGrabSpeed, _grabScale;
     int _windowWidth, _windowHeight;
 
-    bool _fitToScreen;
+    int _fitToScreen;
     GrabMode _grabMode;
 
     bool _changeFlag;

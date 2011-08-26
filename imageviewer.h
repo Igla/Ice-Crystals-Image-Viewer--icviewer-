@@ -43,6 +43,7 @@
 
 #include <QMainWindow>
 #include <QPrinter>
+#include <QShortcut>
 
 #ifndef __LOAD_IN_MAIN_THREAD
 #include <QFutureWatcher> // не знаю, как без header-а объявить
@@ -93,18 +94,36 @@ public:
     void endMooving();
 
 protected:
-    void keyPressEvent(QKeyEvent* event);
+    void changeEvent(QEvent *ev);
+//    void keyPressEvent(QKeyEvent* event);
 //    void keyReleaseEvent(QKeyEvent *event);
     void resizeEvent(QResizeEvent* event);
     void mouseDoubleClickEvent(QMouseEvent *ev);
+    void showEvent(QShowEvent *ev);
+private:
+    void (ImageViewer::*showEventFunc)(QShowEvent *ev);
+
+    void firstShowEvent(QShowEvent *ev);
+    void otherShowEvent(QShowEvent *ev);
 
 private slots:
+    // Костыли на горячие клавиши. Какое-то разочарование на то как они в Qt реализованы в связке с QAction
+    //Если просто соединять сигнал в сигнал, то у action не меняется состояние checked, если менюшка с ней скрыта
+    void fitToWindowKostil();
+    void fitToImageKostil();
+    void changeModeKostil();
+    //-------------------------
+
+
+    void showContextMenu(const QPoint& point);
+
     void open();
     void print();
     void zoomIn();
     void zoomOut();
     void normalSize();
     void fitToWindow();
+    void fitToImage();
     void about();
 
     void changeMode();
@@ -151,6 +170,7 @@ private:
     void storeGrabMode();
 
     void restoreGeometry();
+    void restoreImageViewOptions();
     void setZoomLabels();
 
     void checkZoomInAct(double factor);
@@ -185,6 +205,10 @@ private:
 
     void acceptCustomizeDlg(const CustomizeViewDialog &dlg);
 
+    void activateShortcuts(bool enabled);
+
+    QRect getContentRect() const;
+
     MMovingLabel *imageLabel;
     QScrollArea *scrollArea;
     double scaleFactor,_oldScaleFactor;
@@ -204,6 +228,10 @@ private:
     QAction *fitToWindowAct;
     QAction *aboutAct;
     QAction *aboutQtAct;
+
+    QAction *fitToImageAct;
+
+    QActionGroup *fitGroup;
 
     QAction *customizeViewAct;
 
@@ -240,8 +268,11 @@ private:
     QMenu *helpMenu;
 
     QCursor _lastCursor;
+    QList<QShortcut*> shortCuts;
 
     int _frameStyle;
+    int _storedWidth,_storedHeight;
+
     float scrollValH,scrollValV;
 
 #ifndef __LOAD_IN_MAIN_THREAD

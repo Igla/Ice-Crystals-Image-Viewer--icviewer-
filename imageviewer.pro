@@ -33,14 +33,13 @@ symbian: warning(This example might not fully work on Symbian platform)
 maemo5: warning(This example might not fully work on Maemo platform)
 simulator: warning(This example might not fully work on Simulator platform)
 
-#DEFINES += __LOAD_IN_MAIN_THREAD
+DEFINES += __LOAD_IN_MAIN_THREAD
 
 debug {
-    DEFINES += __DEBUG
+#    DEFINES += __DEBUG
 }
 
 FORMS += \
     customizeviewdialog.ui
 
-RESOURCES += \
-    images.qrc
+RESOURCES +=

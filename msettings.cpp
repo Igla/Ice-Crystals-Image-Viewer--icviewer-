@@ -46,7 +46,7 @@ static const QString ITEM_WINDOW_STATE("window_state");
 #define DEFAULT_WINDOW_STATE Qt::WindowActive
 
 static const QString ITEM_FIT_TO_SCREEN("fit_to_screen");
-#define DEFAULT_FIT_TO_SCREEN false
+#define DEFAULT_FIT_TO_SCREEN 0
 
 static const QString ITEM_GRAB_SCALE("grab_scale");
 #define DEFAULT_GRAB_SCALE 200
@@ -97,7 +97,7 @@ void MSettings::loadSettings(const QSettings &settings)
      if(!heightAvailable(_windowHeight))
          _windowHeight = DEFAULT_WINDOW_HEIGHT;
 
-     _fitToScreen = settings.value(ITEM_FIT_TO_SCREEN,DEFAULT_FIT_TO_SCREEN).toBool();
+     _fitToScreen = settings.value(ITEM_FIT_TO_SCREEN,DEFAULT_FIT_TO_SCREEN).toInt();
 }
 
 void MSettings::storeUserSettings() const
@@ -126,7 +126,7 @@ void MSettings::storeUserSettings() const
     settings.setValue(ITEM_WINDOW_WIDTH,windowWidth());
     settings.setValue(ITEM_WINDOW_HEIGHT,windowHeight());
 
-    settings.setValue(ITEM_FIT_TO_SCREEN,fitToScreen());
+    settings.setValue(ITEM_FIT_TO_SCREEN,_fitToScreen);
 }
 
 inline const QString& MSettings::userSettingsPath()

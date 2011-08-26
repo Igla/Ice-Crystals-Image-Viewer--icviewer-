@@ -44,6 +44,7 @@
 #include <QScrollArea>
 #include <QResizeEvent>
 #include <QActionGroup>
+#include <QSize>
 
 #ifdef __DEBUG
 #include <QDebug>
@@ -69,10 +70,12 @@ extern MFileIterator *APP_FILE_ITERATOR;
 #define max(a,b) (a>b?a:b)
 #define min(a,b) (a<b?a:b)
 
+#define NOT_NORMAL_STATE (Qt::WindowFullScreen|Qt::WindowMaximized|Qt::WindowMinimized)
+
 int zoom_fl = ZOOM_DEFAULT;
 float zoom_back;
 
-ImageViewer::ImageViewer():scaleFactor(1.0),scrollValH(0.0f),scrollValV(0.0f)
+ImageViewer::ImageViewer():showEventFunc(&ImageViewer::firstShowEvent),scaleFactor(1.0),scrollValH(0.0f),scrollValV(0.0f)
 {
     QColor color(0,0,0,0);
 
@@ -105,21 +108,26 @@ ImageViewer::ImageViewer():scaleFactor(1.0),scrollValH(0.0f),scrollValV(0.0f)
     createActions();
     createMenus();
 
+    setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(this, SIGNAL(customContextMenuRequested(const QPoint&)),
+        this, SLOT(showContextMenu(const QPoint&)));
+
 #ifndef __LOAD_IN_MAIN_THREAD
     connect(&_loaderTask,SIGNAL(finished()),this,SLOT(imageLoaded()));
 #endif
 
-
-    open(APP_FILE_ITERATOR->current());
+    _lastCursor = cursor();
 
     scrollArea->setWidget(imageLabel);
     setCentralWidget(scrollArea);
 
-    _lastCursor = cursor();
-
     loadSortSettings();
     setGrabState();
     restoreGeometry();
+
+    open(APP_FILE_ITERATOR->current());
+
+//    restoreImageViewOptions();
 }
 
 ImageViewer::~ImageViewer()
@@ -128,24 +136,46 @@ ImageViewer::~ImageViewer()
     storeGrabMode();
 
     APP_SETTINGS->setFitToScreen(fitToWindowAct->isChecked());
+    APP_SETTINGS->setFitToImage(fitToImageAct->isChecked());
 
     APP_SETTINGS->setWindowState(windowState());
-    APP_SETTINGS->setWindowWidth(width());
-    APP_SETTINGS->setWindowHeight(height());
+
+    if((windowState()&NOT_NORMAL_STATE)==0) {
+        _storedWidth = width();
+        _storedHeight = height();
+    }
+
+    APP_SETTINGS->setWindowWidth(_storedWidth);
+    APP_SETTINGS->setWindowHeight(_storedHeight);
     if(APP_SETTINGS->isChanged())
         APP_SETTINGS->storeUserSettings();
 }
 
 void ImageViewer::restoreGeometry() {
-   Qt::WindowStates states = APP_SETTINGS->windowState();
+   Qt::WindowStates states = APP_SETTINGS->windowState(); 
     resize(APP_SETTINGS->windowWidth(), APP_SETTINGS->windowHeight());
+
     if((states&Qt::WindowFullScreen)==Qt::WindowFullScreen) {
-        setWindowState(states^Qt::WindowFullScreen);
+//        setWindowState(states^Qt::WindowFullScreen);
         fullScreenAct->activate(QAction::Trigger);
         //setFullScreenMode();
     }
     else
-        setWindowState(states);
+        setWindowMode();
+
+    setWindowState(states);
+
+    restoreImageViewOptions();
+}
+
+void ImageViewer::restoreImageViewOptions()
+{
+    if(APP_SETTINGS->fitToScreen())
+        fitToWindowAct->setChecked(true);
+    else
+    if(APP_SETTINGS->fitToImage()) {
+        fitToImageAct->setChecked(true);//activate(QAction::Trigger);//
+    }
 }
 
 
@@ -193,10 +223,6 @@ void ImageViewer::open(const QString &fileName, bool showErrorMessage)
 
         storeScrollProportion();
 
-//#ifdef __DEBUG
-//            qDebug() << "1: " <<scrollArea->horizontalScrollBar()->maximum() << " : " << scrollArea->verticalScrollBar()->maximum();
-//#endif
-
         setWindowTitle(QFileInfo(fileName).fileName() + " - " + QApplication::applicationName());
         setEmptyLabel(QString::fromUtf8("Грузим картинку !!!"));
 
@@ -204,17 +230,19 @@ void ImageViewer::open(const QString &fileName, bool showErrorMessage)
         QFuture<void> future = QtConcurrent::run(this,&ImageViewer::loadImage,fileName);
         _loaderTask.setFuture(future);
 #else
+        setWindowTitle(QFileInfo(fileName).fileName() + " - " + QApplication::applicationName());
         QPixmap _image(fileName);
 //        QImage _image(fileName);
         if (_image.isNull()) {
+            setInfoLabels();
             if(showErrorMessage)
                 QMessageBox::information(this, tr("Image Viewer"),
                                      tr("Cannot load %1.").arg(APP_FILE_ITERATOR->current()));
 
             setEmptyLabel(STR_IMAGE_IS_ABSENT);
-            setInfoLabels();
             return;
         }
+        storeScrollProportion();
         imageLabel->setPixmap(_image);
         printAct->setEnabled(true);
         setZoom();
@@ -259,6 +287,8 @@ void ImageViewer::imageLoaded()
 
 void ImageViewer::setZoom()
 {
+//    if(!isVisible())
+//        return;
     //Вот странно, не думал, что imageLabel->pixmap() будет null возвращать.
     //Даже в начале пытался QPixmap() ему присвоить, бесполезно,
     //прийдётся оба условия проверять
@@ -267,14 +297,9 @@ void ImageViewer::setZoom()
     }
     else
     {
-
         if(fitToWindowAct->isChecked()) {
             const QPixmap *pm = imageLabel->pixmap();
-            QRect rect(scrollArea->contentsRect());
-            if(scrollArea->horizontalScrollBar()->isVisible())
-                rect.setHeight(rect.height()+(scrollArea->horizontalScrollBar()->height()>>1));
-            if(scrollArea->verticalScrollBar()->isVisible())
-                rect.setWidth(rect.width()+(scrollArea->verticalScrollBar()->width()>>1));
+            QRect rect(getContentRect());
 
             if(pm->width()<=rect.width() && pm->height()<=rect.height()) {
                 imageLabel->adjustSize();
@@ -285,6 +310,7 @@ void ImageViewer::setZoom()
             }
         }
         else {
+
             checkZoomInAct(ZOOM_IN_FACTOR);
             checkZoomOutAct(ZOOM_OUT_FACTOR);
 
@@ -303,16 +329,20 @@ void ImageViewer::setZoom()
             }
             else {
                 imageLabel->resize(scaleFactor * imageLabel->pixmap()->size());
-//    #ifdef __DEBUG
-//                qDebug() << "2: " <<scrollArea->horizontalScrollBar()->maximum() << " : " << scrollArea->verticalScrollBar()->maximum();
-//    #endif
+            }
+
+            if(/*!isFullScreen()*/fitToImageAct->isChecked() && fitToImageAct->isEnabled()) {
+//                update();
+                QSize windowSize(size());
+                QRect rect(getContentRect());
+                windowSize.rwidth()+=imageLabel->width()-rect.width();
+                windowSize.rheight()+=imageLabel->height()-rect.height();
+                resize(windowSize);
+//                update();
             }
             //Вот мы поставили новую картинку, но значения скролбаров до выхода из функции не изменятся,
             //поэтому надо либо обновлять, либо отслеживать когда он сформируется далее, что проблематично
             scrollArea->update();
-//#ifdef __DEBUG
-//            qDebug() << "3: " <<scrollArea->horizontalScrollBar()->maximum() << " : " << scrollArea->verticalScrollBar()->maximum();
-//#endif
             scrollArea->horizontalScrollBar()->setValue((scrollArea->horizontalScrollBar()->maximum() -scrollArea->horizontalScrollBar()->minimum())*scrollValH);
             scrollArea->verticalScrollBar()->setValue((scrollArea->verticalScrollBar()->maximum() -scrollArea->verticalScrollBar()->minimum())*scrollValV);
         }
@@ -365,9 +395,21 @@ void ImageViewer::normalSize()
     scaleFactor = 1.0;
 }
 
+//Одна заставляет выполнить вторую zoom, если они обе отмечены
 void ImageViewer::fitToWindow()
 {
+    if(fitToWindowAct->isChecked() && fitToImageAct->isChecked())
+        fitToImageAct->setChecked(false);//activate(QAction::Trigger);//
     setZoom();
+}
+
+void ImageViewer::fitToImage()
+{
+    if(fitToWindowAct->isChecked()) {
+        if(fitToImageAct->isChecked())
+            fitToWindowAct->setChecked(false);//activate(QAction::Trigger);//
+        setZoom();
+    }
 }
 
 void ImageViewer::about()
@@ -388,52 +430,109 @@ void ImageViewer::setZoomLabels() {
 
 void ImageViewer::createActions()
 {
+    QShortcut *shortcut;
 
     openAct = new QAction(tr("&Open..."), this);
-    openAct->setIcon(QIcon(":/images/16x16/document-open-data.png"));
-    openAct->setShortcut(tr("Ctrl+O"));
+    openAct->setIcon(QIcon::fromTheme(QLatin1String("document-open-data")));//QIcon(":/images/16x16/document-open-data.png"));
+    openAct->setShortcut(QKeySequence(QKeySequence::Open));//tr("Ctrl+O"));
+//    openAct->setShortcutContext(Qt::ApplicationShortcut);
+
+    shortcut = new QShortcut(openAct->shortcut(),this);
+    shortCuts.append(shortcut);
+
+    connect(shortcut, SIGNAL(activated()), this, SLOT(open()));
     connect(openAct, SIGNAL(triggered()), this, SLOT(open()));
 
     printAct = new QAction(tr("&Print..."), this);
-    printAct->setIcon(QIcon(":/images/16x16/document-print.png"));
-    printAct->setShortcut(tr("Ctrl+P"));
+    printAct->setIcon(QIcon::fromTheme(QLatin1String("document-print")));//QIcon(":/images/16x16/document-print.png"));
+    printAct->setShortcut(QKeySequence::Print);//tr("Ctrl+P"));
+//    printAct->setShortcutContext(Qt::ApplicationShortcut);
 //    printAct->setEnabled(false);
+    shortcut = new QShortcut(printAct->shortcut(),this);
+    shortCuts.append(shortcut);
+
+    connect(shortcut, SIGNAL(activated()), this, SLOT(print()));
     connect(printAct, SIGNAL(triggered()), this, SLOT(print()));
 
     exitAct = new QAction(tr("E&xit"), this);
-    exitAct->setIcon(QIcon(":/images/16x16/application-exit.png"));
-    exitAct->setShortcut(tr("Ctrl+Q"));
+    exitAct->setIcon(QIcon::fromTheme(QLatin1String("application-exit")));//QIcon(":/images/16x16/application-exit.png"));
+    exitAct->setShortcut(QKeySequence::Quit);//tr("Ctrl+Q"));
+//    exitAct->setShortcutContext(Qt::ApplicationShortcut);
+    shortcut = new QShortcut(exitAct->shortcut(),this);
+    shortCuts.append(shortcut);
+
+    connect(shortcut, SIGNAL(activated()), this, SLOT(close()));
     connect(exitAct, SIGNAL(triggered()), this, SLOT(close()));
 
 
     fullScreenAct = new QAction(tr("F&ull Screen Mode"),this);
-    fullScreenAct->setIcon(QIcon(":/images/16x16/view-fullscreen.png"));
-    fullScreenAct->setShortcut(tr("Ctrl+Return"));
+    fullScreenAct->setIcon(QIcon::fromTheme("view-fullscreen"));//QIcon(":/images/16x16/view-fullscreen.png"));
+    fullScreenAct->setShortcut(QKeySequence(Qt::CTRL+Qt::Key_Return));//,Qt::CTRL+Qt::Key_Enter));//tr("Ctrl+Return"));
     fullScreenAct->setCheckable(true);
+//    fullScreenAct->setShortcutContext(Qt::ApplicationShortcut);
+    shortcut = new QShortcut(fullScreenAct->shortcut(),this);
+    shortCuts.append(shortcut);
+
+    connect(shortcut, SIGNAL(activated()), this,SLOT(changeModeKostil()));//fullScreenAct, SIGNAL(triggered()));
     connect(fullScreenAct, SIGNAL(triggered()), this, SLOT(changeMode()));
 
     zoomInAct = new QAction(this);
-    zoomInAct->setIcon(QIcon(":/images/16x16/zoom-in.png"));
-    zoomInAct->setShortcut(tr("Ctrl++"));
+    zoomInAct->setIcon(QIcon::fromTheme("zoom-in"));//QIcon(":/images/16x16/zoom-in.png"));
+    zoomInAct->setShortcut(QKeySequence::ZoomIn);//tr("Ctrl++"));
+//    zoomInAct->setShortcutContext(Qt::ApplicationShortcut);
 //    zoomInAct->setEnabled(false);
+    shortcut = new QShortcut(zoomInAct->shortcut(),this);
+    shortCuts.append(shortcut);
+
+    connect(shortcut, SIGNAL(activated()), this, SLOT(zoomIn()));
     connect(zoomInAct, SIGNAL(triggered()), this, SLOT(zoomIn()));
 
     zoomOutAct = new QAction(this);
-    zoomOutAct->setIcon(QIcon(":/images/16x16/zoom-out.png"));
-    zoomOutAct->setShortcut(tr("Ctrl+-"));
+    zoomOutAct->setIcon(QIcon::fromTheme("zoom-out"));//QIcon(":/images/16x16/zoom-out.png"));
+    zoomOutAct->setShortcut(QKeySequence::ZoomOut);//tr("Ctrl+-"));
+//    zoomOutAct->setShortcutContext(Qt::ApplicationShortcut);
 //    zoomOutAct->setEnabled(false);
+    shortcut = new QShortcut(zoomOutAct->shortcut(),this);
+    shortCuts.append(shortcut);
+
+    connect(shortcut, SIGNAL(activated()), this, SLOT(zoomOut()));
     connect(zoomOutAct, SIGNAL(triggered()), this, SLOT(zoomOut()));
 
     normalSizeAct = new QAction(tr("&Normal Size"), this);
-    normalSizeAct->setIcon(QIcon(":/images/16x16/zoom-original.png"));
-    normalSizeAct->setShortcut(tr("Ctrl+S"));
+    normalSizeAct->setIcon(QIcon::fromTheme("zoom-original"));//QIcon(":/images/16x16/zoom-original.png"));
+    normalSizeAct->setShortcut(QKeySequence(Qt::CTRL+Qt::Key_S/*,Qt::CTRL+Qt::Key_1*/));//tr("Ctrl+S"));
+//    normalSizeAct->setShortcutContext(Qt::ApplicationShortcut);
+    shortcut = new QShortcut(normalSizeAct->shortcut(),this);
+    shortCuts.append(shortcut);
+
+    connect(shortcut, SIGNAL(activated()), this, SLOT(normalSize()));
     connect(normalSizeAct, SIGNAL(triggered()), this, SLOT(normalSize()));
 
     fitToWindowAct = new QAction(tr("&Fit to Window"), this);
-    fitToWindowAct->setIcon(QIcon(":/images/16x16/zoom-fit-best.png"));
+    fitToWindowAct->setIcon(QIcon::fromTheme("zoom-fit-best"));//QIcon(":/images/16x16/zoom-fit-best.png"));
     fitToWindowAct->setCheckable(true);
-    fitToWindowAct->setShortcut(tr("Ctrl+F"));
+    fitToWindowAct->setShortcut(QKeySequence(Qt::CTRL+Qt::Key_F/*,Qt::CTRL+Qt::Key_2*/));//tr("Ctrl+F"));
+//    fitToWindowAct->setShortcutContext(Qt::ApplicationShortcut);
+    shortcut = new QShortcut(fitToWindowAct->shortcut(),this);
+    shortCuts.append(shortcut);
+
+    connect(shortcut, SIGNAL(activated()), this,SLOT(fitToWindowKostil()));
     connect(fitToWindowAct, SIGNAL(triggered()), this, SLOT(fitToWindow()));
+
+    fitToImageAct = new QAction(tr("&Fit to Image"), this);
+    fitToImageAct->setIcon(QIcon::fromTheme("image-x-generic"));//QIcon(":/images/16x16/zoom-fit-best.png"));
+    fitToImageAct->setCheckable(true);
+    fitToImageAct->setShortcut(QKeySequence(Qt::CTRL+Qt::Key_I));
+
+    shortcut = new QShortcut(fitToImageAct->shortcut(),this);
+    shortCuts.append(shortcut);
+
+    connect(shortcut, SIGNAL(activated()), this,SLOT(fitToImageKostil()));
+    connect(fitToImageAct, SIGNAL(triggered()), this, SLOT(fitToImage()));
+
+//    fitGroup = new QActionGroup(this);
+//    fitGroup->addAction(fitToWindowAct);
+//    fitGroup->addAction(fitToImageAct);
 
     aboutAct = new QAction(tr("&About"), this);
     connect(aboutAct, SIGNAL(triggered()), this, SLOT(about()));
@@ -504,30 +603,58 @@ void ImageViewer::createActions()
 
 
     goNextAct = new QAction(tr("&Next"), this);
-    goNextAct->setIcon(QIcon(":/images/16x16/go-next.png"));
+    goNextAct->setIcon(QIcon::fromTheme("go-next"));//QIcon(":/images/16x16/go-next.png"));
     goNextAct->setShortcut(tr("Space"));
+//    goNextAct->setShortcutContext(Qt::ApplicationShortcut);
+    shortcut = new QShortcut(goNextAct->shortcut(),this);
+    shortCuts.append(shortcut);
+
+    connect(shortcut, SIGNAL(activated()), this, SLOT(goNext()));
     connect(goNextAct, SIGNAL(triggered()), this, SLOT(goNext()));
 
     goPreviousAct = new QAction(tr("&Previous"), this);
-    goPreviousAct->setIcon(QIcon(":/images/16x16/go-previous.png"));
+    goPreviousAct->setIcon(QIcon::fromTheme("go-previous"));//QIcon(":/images/16x16/go-previous.png"));
     goPreviousAct->setShortcut(tr("Backspace"));
+//    goPreviousAct->setShortcutContext(Qt::ApplicationShortcut);
+    shortcut = new QShortcut(goPreviousAct->shortcut(),this);
+    shortCuts.append(shortcut);
+
+    connect(shortcut, SIGNAL(activated()), this, SLOT(goPrevious()));
     connect(goPreviousAct, SIGNAL(triggered()), this, SLOT(goPrevious()));
 
     goFirstAct = new QAction(tr("&First"), this);
+    goFirstAct->setIcon(QIcon::fromTheme("go-first"));
     goFirstAct->setShortcut(tr("Home"));
+//    goFirstAct->setShortcutContext(Qt::ApplicationShortcut);
+    shortcut = new QShortcut(goFirstAct->shortcut(),this);
+    shortCuts.append(shortcut);
+
+    connect(shortcut, SIGNAL(activated()), this, SLOT(goFirst()));
     connect(goFirstAct, SIGNAL(triggered()), this, SLOT(goFirst()));
 
     goLastAct = new QAction(tr("&Last"), this);
+    goLastAct->setIcon(QIcon::fromTheme("go-last"));
     goLastAct->setShortcut(tr("End"));
+//    goLastAct->setShortcutContext(Qt::ApplicationShortcut);
+    shortcut = new QShortcut(goLastAct->shortcut(),this);
+    shortCuts.append(shortcut);
+
+    connect(shortcut, SIGNAL(activated()), this, SLOT(goLast()));
     connect(goLastAct, SIGNAL(triggered()), this, SLOT(goLast()));
 
-
     goUpAct = new QAction(tr("&Up"), this);
-    goUpAct->setIcon(QIcon(":/images/16x16/go-up.png"));
+    goUpAct->setIcon(QIcon::fromTheme("go-up"));//QIcon(":/images/16x16/go-up.png"));
     goUpAct->setShortcut(tr("Alt+Up"));
+//    goUpAct->setShortcutContext(Qt::ApplicationShortcut);
+    shortcut = new QShortcut(goUpAct->shortcut(),this);
+    shortCuts.append(shortcut);
+
+    connect(shortcut, SIGNAL(activated()), this, SLOT(goUp()));
     connect(goUpAct, SIGNAL(triggered()), this, SLOT(goUp()));
 
     goStartAct = new QAction(tr("&Start Page"), this);
+    goStartAct->setIcon(QIcon::fromTheme("go-home"));
+//    goStartAct->setShortcutContext(Qt::ApplicationShortcut);
     connect(goStartAct, SIGNAL(triggered()), this, SLOT(goStart()));
 
     setZoomLabels();
@@ -570,6 +697,7 @@ void ImageViewer::createMenus()
     viewMenu->addAction(normalSizeAct);
     viewMenu->addSeparator();
     viewMenu->addAction(fitToWindowAct);
+    viewMenu->addAction(fitToImageAct);
     \
     goMenu = new QMenu(tr("&Go"),this);
     goMenu->addAction(goFirstAct);
@@ -685,95 +813,95 @@ void ImageViewer::endMooving()
     }
 }
 
-void ImageViewer::keyPressEvent(QKeyEvent * event)
-{
-    if(event->modifiers()==Qt::NoModifier) {
-        switch(event->key()){
-            case Qt::Key_Space:
-              if(isFullScreen()) {
-//            case Qt::Key_Right:
-//                if(APP_FILE_ITERATOR->haveNext())
-                    goNextAct->activate(QAction::Trigger);
-//                    open(APP_FILE_ITERATOR->next());
-//                event->accept();
-              }
-            break;
-            case Qt::Key_Backspace:
-//            case Qt::Key_Left:
-//                if(APP_FILE_ITERATOR->havePrevious())
-                    goPreviousAct->activate(QAction::Trigger);
-//                    open(APP_FILE_ITERATOR->previous());
-//                event->accept();
-            break;
-#ifndef __LOAD_IN_MAIN_THREAD
-            case Qt::Key_Escape:
-                _loaderTask.cancel();
-//                event->accept();
-            break;
-#endif
-        }
-//        if(event->isAccepted())
-//            return;
-    }
-    else {
-        if((event->modifiers() == Qt::ControlModifier)) { // == Qt::ControlModifier) {
-            if( (isFullScreen() && event->key() == Qt::Key_Return)) {
-//                case Qt::Key_F:
-//                changeMode();
-//                event->accept();
-                fullScreenAct->activate(QAction::Trigger);
-           }
-           else {
-                if(isFullScreen()) {
-                    switch(event->key()) {
-                        case Qt::Key_Q:
-                            exitAct->activate(QAction::Trigger);
-//                            event->accept();
-                            break;
-                        case Qt::Key_S:
-                            normalSizeAct->activate(QAction::Trigger);
-//                            event->accept();
-                            break;
-                        case Qt::Key_O:
-                            openAct->activate(QAction::Trigger);
-//                            event->accept();
-                            break;
-                        case Qt::Key_F:
-                            fitToWindowAct->activate(QAction::Trigger);
-//                            event->accept();
-                            break;
-                        case Qt::Key_Plus:
-                            zoomInAct->activate(QAction::Trigger);
-//                            event->accept();
-                            break;
-                        case Qt::Key_Minus:
-                            zoomOutAct->activate(QAction::Trigger);
-//                            event->accept();
-                            break;
-                    }
-                }
-           }
-        }
-    }
-    event->accept();
-//    QMainWindow::keyPressEvent(event);
-}
+//void ImageViewer::keyPressEvent(QKeyEvent * event)
+//{
+//    if(event->modifiers()==Qt::NoModifier) {
+//        switch(event->key()){
+//            case Qt::Key_Space:
+//              if(isFullScreen()) {
+////            case Qt::Key_Right:
+////                if(APP_FILE_ITERATOR->haveNext())
+//                    goNextAct->activate(QAction::Trigger);
+////                    open(APP_FILE_ITERATOR->next());
+////                event->accept();
+//              }
+//            break;
+//            case Qt::Key_Backspace:
+////            case Qt::Key_Left:
+////                if(APP_FILE_ITERATOR->havePrevious())
+//                    goPreviousAct->activate(QAction::Trigger);
+////                    open(APP_FILE_ITERATOR->previous());
+////                event->accept();
+//            break;
+//#ifndef __LOAD_IN_MAIN_THREAD
+//            case Qt::Key_Escape:
+//                _loaderTask.cancel();
+////                event->accept();
+//            break;
+//#endif
+//        }
+////        if(event->isAccepted())
+////            return;
+//    }
+//    else {
+//        if((event->modifiers() == Qt::ControlModifier)) { // == Qt::ControlModifier) {
+//            if( (isFullScreen() && event->key() == Qt::Key_Return)) {
+////                case Qt::Key_F:
+////                changeMode();
+////                event->accept();
+//                fullScreenAct->activate(QAction::Trigger);
+//           }
+//           else {
+//                if(isFullScreen()) {
+//                    switch(event->key()) {
+//                        case Qt::Key_Q:
+//                            exitAct->activate(QAction::Trigger);
+////                            event->accept();
+//                            break;
+//                        case Qt::Key_S:
+//                            normalSizeAct->activate(QAction::Trigger);
+////                            event->accept();
+//                            break;
+//                        case Qt::Key_O:
+//                            openAct->activate(QAction::Trigger);
+////                            event->accept();
+//                            break;
+//                        case Qt::Key_F:
+//                            fitToWindowAct->activate(QAction::Trigger);
+////                            event->accept();
+//                            break;
+//                        case Qt::Key_Plus:
+//                            zoomInAct->activate(QAction::Trigger);
+////                            event->accept();
+//                            break;
+//                        case Qt::Key_Minus:
+//                            zoomOutAct->activate(QAction::Trigger);
+////                            event->accept();
+//                            break;
+//                    }
+//                }
+//           }
+//        }
+//    }
+//    event->accept();
+////    QMainWindow::keyPressEvent(event);
+//}
 
 void ImageViewer::changeMode()
 {
     if(isFullScreen()) {
-        this->setWindowState(this->windowState() ^ Qt::WindowFullScreen);
         setWindowMode();
     }
     else {
-        this->setWindowState(this->windowState() | Qt::WindowFullScreen);
         setFullScreenMode();
     }
 }
 
 void ImageViewer::setFullScreenMode()
 {
+    this->setWindowState(this->windowState() | Qt::WindowFullScreen);
     this->menuBar()->setVisible(false);
+    activateShortcuts(true);
     scrollArea->setBackgroundRole(QPalette::Shadow);
     _frameStyle = scrollArea->frameStyle();
     scrollArea->setFrameStyle(QFrame::NoFrame);
@@ -781,9 +909,36 @@ void ImageViewer::setFullScreenMode()
 
 void ImageViewer::setWindowMode()
 {
+    this->setWindowState(this->windowState() ^ Qt::WindowFullScreen);
+    activateShortcuts(false);
     this->menuBar()->setVisible(true);
     scrollArea->setBackgroundRole(QPalette::Dark);
     scrollArea->setFrameStyle(_frameStyle);
+}
+
+
+void ImageViewer::changeEvent(QEvent *ev)
+{
+    if(ev->type()==QEvent::WindowStateChange){
+        QWindowStateChangeEvent *event = static_cast<QWindowStateChangeEvent*>(ev);
+
+        if((windowState() & NOT_NORMAL_STATE)==0) {
+            //Ну, пущай размер окна изменяется только в обычном оконном режиме не MAXIMIZED и не FULL_SCREEN
+            fitToImageAct->setEnabled(true);
+            if(fitToImageAct->isChecked())
+                setZoom();
+        }
+        else {
+            fitToImageAct->setEnabled(false);
+            if((event->oldState() & NOT_NORMAL_STATE)==0 && (windowState() & NOT_NORMAL_STATE)!=0) {
+                QSize s(size());
+                _storedWidth = s.width();
+                _storedHeight = s.height();
+            }
+        }
+
+    }
+    QMainWindow::changeEvent(ev);
 }
 
 void ImageViewer::resizeEvent(QResizeEvent* event)
@@ -797,6 +952,23 @@ void ImageViewer::mouseDoubleClickEvent(QMouseEvent *ev)
 {
     changeMode();
     ev->accept();
+}
+
+void ImageViewer::showEvent(QShowEvent *ev)
+{
+    (this->*showEventFunc)(ev);
+}
+
+void ImageViewer::firstShowEvent(QShowEvent *ev)
+{
+    showEventFunc = &ImageViewer::otherShowEvent;
+    QMainWindow::showEvent(ev);
+    setZoom();
+}
+
+void ImageViewer::otherShowEvent(QShowEvent *ev)
+{
+    QMainWindow::showEvent(ev);
 }
 
 
@@ -1050,4 +1222,59 @@ void ImageViewer::goStart()
 {
     APP_FILE_ITERATOR->setStartPoint(QDir::currentPath());
     open(APP_FILE_ITERATOR->current());
+}
+
+void ImageViewer::showContextMenu(const QPoint& point)
+{
+    QPoint globalPos = mapToGlobal(point);
+
+    QMenu myMenu;
+    myMenu.addAction(fullScreenAct);
+    myMenu.addSeparator();
+    myMenu.addMenu(goMenu);
+    myMenu.addSeparator();
+    myMenu.addMenu(sortMenu);
+    myMenu.addMenu(grabMenu);
+    myMenu.addSeparator();
+    myMenu.addAction(zoomInAct);
+    myMenu.addAction(zoomOutAct);
+    myMenu.addAction(normalSizeAct);
+    myMenu.addSeparator();
+    myMenu.addAction(fitToWindowAct);
+
+    myMenu.exec(globalPos);
+}
+
+// Костыльки
+void ImageViewer::activateShortcuts(bool enabled)
+{
+    foreach(QShortcut* shortcut,shortCuts)
+        shortcut->setEnabled(enabled);
+}
+
+void ImageViewer::fitToWindowKostil()
+{
+    fitToWindowAct->activate(QAction::Trigger);
+}
+
+void ImageViewer::fitToImageKostil()
+{
+    fitToImageAct->activate(QAction::Trigger);
+}
+
+void ImageViewer::changeModeKostil()
+{
+    fullScreenAct->activate(QAction::Trigger);
+}
+//---------
+QRect ImageViewer::getContentRect() const
+{
+    QRect rect(scrollArea->contentsRect());
+    if(!isFullScreen()) {
+        if(scrollArea->horizontalScrollBar()->isVisible())
+            rect.setHeight(rect.height()+(scrollArea->horizontalScrollBar()->height()*3/4));
+        if(scrollArea->verticalScrollBar()->isVisible())
+            rect.setWidth(rect.width()+(scrollArea->verticalScrollBar()->width()*3/4));
+    }
+    return rect;
 }
