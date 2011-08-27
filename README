@@ -6,4 +6,20 @@
 
 qmake CONFIG+="release" imageviewer.pro
 make
-Исполняемый файл "icviewer" будет получен в случае успешной компиляции.
+Исполняемый файл "icview" будет получен в случае успешной компиляции.
+
+Добавил возможность кастомизации стилей.
+
+
+Файл стилей: HOME_DIR+ "/.config/ice-crystals/ICImageViewer/style.main"
+
+Доступны следующие объекты:
+  viewArea - центральный виджет окна(QScrollArea)
+  imageWidhet - виджет, отвечающий за отрисовку изображения
+
+Пример:
+  #viewArea { background-image: url("/home/igla/Картинки/шахматы.png"); }
+  #imageWidget { font: 75 oblique 26pt "Tekton Pro";
+		 color: rgb(255, 44, 7); }
+
+Документация по стилям в Qt: http://developer.qt.nokia.com/doc/qt-4.7/stylesheet.html

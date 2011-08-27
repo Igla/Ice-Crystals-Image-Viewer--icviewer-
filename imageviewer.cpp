@@ -79,33 +79,17 @@ ImageViewer::ImageViewer():showEventFunc(&ImageViewer::firstShowEvent),
     _storedWidth(0),_storedHeight(0),
     scaleFactor(1.0),scrollValH(0.0f),scrollValV(0.0f)
 {
-    QColor color(0,0,0,0);
 
     imageLabel = new MMovingLabel(this);
     imageLabel->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored);
     imageLabel->setScaledContents(true);
     imageLabel->setAlignment(Qt::AlignCenter);
 
-    QFont labelFont(imageLabel->font(), imageLabel);
-    int fsize = labelFont.pixelSize();
-    if(fsize==-1) {
-        fsize = labelFont.pointSize();
-        labelFont.setPointSize(fsize<<1);
-    }
-    else {
-        labelFont.setPixelSize(fsize<<1);
-    }
-    imageLabel->setFont(labelFont);
-
-    QPalette p(imageLabel->palette());
-    p.setBrush(QPalette::Background,QBrush(Qt::NoBrush));
-    imageLabel->setPalette(p);
-
-    scrollArea = new QScrollArea; 
+    scrollArea = new QScrollArea();
     scrollArea->setAlignment(Qt::AlignCenter);
 
 
-    scrollArea->setBackgroundRole(QPalette::Dark);
+    setViewStyle();
 
     createActions();
     createMenus();
@@ -183,7 +167,7 @@ void ImageViewer::restoreImageViewOptions()
 }
 
 
-static const QString STR_IMAGE_IS_ABSENT(QString::fromUtf8("Картинки нема !!!"));
+static const QString STR_IMAGE_IS_ABSENT (QApplication::instance()->tr("No Image"));//QString::fromUtf8("Картинки нема !!!"));
 
 void ImageViewer::setEmptyLabel(const QString &label) {
     imageLabel->setPixmap(QPixmap());
@@ -930,7 +914,8 @@ void ImageViewer::setFullScreenMode()
     this->setWindowState(this->windowState() | Qt::WindowFullScreen);
     this->menuBar()->setVisible(false);
     activateShortcuts(true);
-    scrollArea->setBackgroundRole(QPalette::Shadow);
+    if(scrollArea->styleSheet().isEmpty())
+        scrollArea->setBackgroundRole(QPalette::Shadow);
     _frameStyle = scrollArea->frameStyle();
     scrollArea->setFrameStyle(QFrame::NoFrame);
 }
@@ -940,7 +925,8 @@ void ImageViewer::setWindowMode()
     this->setWindowState(this->windowState() ^ Qt::WindowFullScreen);
     activateShortcuts(false);
     this->menuBar()->setVisible(true);
-    scrollArea->setBackgroundRole(QPalette::Dark);
+    if(scrollArea->styleSheet().isEmpty())
+        scrollArea->setBackgroundRole(QPalette::Dark);
     scrollArea->setFrameStyle(_frameStyle);
 }
 
@@ -1310,4 +1296,35 @@ QRect ImageViewer::getContentRect() const
             rect.setWidth(rect.width()+(scrollArea->verticalScrollBar()->width()*3/4));
     }
     return rect;
+}
+
+inline void ImageViewer::setViewStyle()
+{
+    QFont labelFont(imageLabel->font(), imageLabel);
+    int fsize = labelFont.pixelSize();
+    if(fsize==-1) {
+        fsize = labelFont.pointSize();
+        labelFont.setPointSize(fsize<<1);
+    }
+    else {
+        labelFont.setPixelSize(fsize<<1);
+    }
+    imageLabel->setFont(labelFont);
+
+
+    QString style(APP_SETTINGS->loadStyleSheet());
+    if(style.isEmpty()) {
+        scrollArea->setBackgroundRole(QPalette::Dark);
+        QPalette p(imageLabel->palette());
+        p.setBrush(QPalette::Background,QBrush(Qt::NoBrush));
+        imageLabel->setPalette(p);
+    }
+    else {
+        imageLabel->setObjectName("imageWidget");
+        scrollArea->setObjectName("viewArea");
+        scrollArea->setStyleSheet(style);
+    }
+
+
+
 }

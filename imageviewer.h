@@ -213,6 +213,8 @@ private:
     bool scaleFactorLegalLowBorder(double factor) const;
     bool scaleFactorLegalHighBorder(double factor) const;
 
+    void setViewStyle();
+
     MMovingLabel *imageLabel;
     QScrollArea *scrollArea;
     double scaleFactor,_oldScaleFactor;

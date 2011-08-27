@@ -13,12 +13,24 @@
 #include <QDesktopWidget>
 #include <QApplication>
 
+#ifdef __DEBUG
+#include <QDebug>
+#endif
+
 #include "msettings.h"
 
+static const QString CONF_NAME("iciv.cnf");
+static const QString STYLE_NAME("style.main");
+static const QString GLOBAL_SETTINGS_PATH("/etc/ice-crystals/");
+static const QString USER_SETTINGS_PATH(QDir::homePath()+ "/.config/ice-crystals/ICImageViewer/");
+#define GLOBAL_SETTINGS_CONF (GLOBAL_SETTINGS_PATH+CONF_NAME)
+#define USER_SETTINGS_CONF (USER_SETTINGS_PATH+CONF_NAME)
 
-#define USER_PATH "/.config/ice-crystals/ICImageViewer/"
-static const QString USER_SETTINGS_PATH(QDir::homePath()+ USER_PATH + "iciv.cnf");
+#define GLOBAL_SETTINGS_STYLE (GLOBAL_SETTINGS_PATH+STYLE_NAME)
+#define USER_SETTINGS_STYLE (USER_SETTINGS_PATH+STYLE_NAME)
 
+// I think there is no need for style sheets bigger then 1Mb
+#define MAX_STYLE_SIZE 1048576
 
 #define DEFAULT_SCALE_DELTA 25
 static const QString ITEM_SCALE_DELTA("scale_delta");
@@ -56,18 +68,18 @@ static const QString ITEM_GRAB_MODE("grab_mode");
 
 MSettings::MSettings(bool useGlobalSettings):_changeFlag(false)
 {
-    QFileInfo f(USER_SETTINGS_PATH);
+    QFileInfo f(USER_SETTINGS_CONF);
     #if defined(Q_OS_UNIX)
     if(!useGlobalSettings &&/*f.exists() &&*/ f.isReadable()) {
-        QSettings s(USER_SETTINGS_PATH,QSettings::IniFormat);
+        QSettings s(USER_SETTINGS_CONF,QSettings::IniFormat);
         loadSettings(s);
     }
     else {
-        QSettings s("/etc/ice-crystals/iciv.cnf", QSettings::IniFormat);
+        QSettings s(GLOBAL_SETTINGS_CONF, QSettings::IniFormat);
         loadSettings(s);
     }
     #else
-        QSettings s;
+        QSettings s(USER_SETTINGS_CONF,QSettings::IniFormat);
         loadSettings(s);
     #endif
 
@@ -102,18 +114,14 @@ void MSettings::loadSettings(const QSettings &settings)
 
 void MSettings::storeUserSettings() const
 {
-    QFileInfo f(USER_SETTINGS_PATH);
+    QFileInfo f(USER_SETTINGS_CONF);
     if(!f.exists()){
         QDir d(f.dir());
         if(!d.exists())
             d.mkpath(".");
     }
 
-#if defined(Q_OS_UNIX)
-    QSettings settings(USER_SETTINGS_PATH,QSettings::IniFormat);
-#else
-    QSettings settings;
-#endif
+    QSettings settings(USER_SETTINGS_CONF,QSettings::IniFormat);
     settings.setValue(ITEM_SCALE_DELTA,(int)(scaleDelta()*100));
     settings.setValue(ITEM_SCALE_LIMIT,(int)(scaleLimit()*100));
     settings.setValue(ITEM_GRAB_SCALE,(int)(grabScale()*100));
@@ -131,7 +139,7 @@ void MSettings::storeUserSettings() const
 
 inline const QString& MSettings::userSettingsPath()
 {
-    return USER_SETTINGS_PATH;
+    return USER_SETTINGS_CONF;
 }
 
 QDir::SortFlags MSettings::getSortFlags(int value)
@@ -207,4 +215,18 @@ bool MSettings::heightAvailable(int height)
 bool MSettings::widthAvailable(int width)
 {
     return width>0 && width <= QApplication::desktop()->availableGeometry().width();
+}
+
+QString MSettings::loadStyleSheet()
+{
+    QFile file(USER_SETTINGS_STYLE);
+    if(!file.exists() || file.size()>MAX_STYLE_SIZE) {
+        #ifdef Q_OS_UNIX
+        file.setFileName(GLOBAL_SETTINGS_STYLE);
+        if(!file.exists() || file.size()>MAX_STYLE_SIZE)
+        #endif
+            return QString();
+    }
+    file.open(QIODevice::ReadOnly);
+    return QString::fromUtf8(file.readAll().constData());
 }

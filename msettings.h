@@ -183,6 +183,8 @@ public:
     static bool heightAvailable(int height);
     static bool widthAvailable(int width);
 
+    static QString loadStyleSheet();
+
 private:
     inline void setChanged(bool changed=true) { _changeFlag = changed; }
     void loadSettings(const QSettings &settings);
