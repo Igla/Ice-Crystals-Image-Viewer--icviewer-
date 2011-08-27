@@ -75,7 +75,9 @@ extern MFileIterator *APP_FILE_ITERATOR;
 int zoom_fl = ZOOM_DEFAULT;
 float zoom_back;
 
-ImageViewer::ImageViewer():showEventFunc(&ImageViewer::firstShowEvent),scaleFactor(1.0),scrollValH(0.0f),scrollValV(0.0f)
+ImageViewer::ImageViewer():showEventFunc(&ImageViewer::firstShowEvent),
+    _storedWidth(0),_storedHeight(0),
+    scaleFactor(1.0),scrollValH(0.0f),scrollValV(0.0f)
 {
     QColor color(0,0,0,0);
 
@@ -145,8 +147,10 @@ ImageViewer::~ImageViewer()
         _storedHeight = height();
     }
 
-    APP_SETTINGS->setWindowWidth(_storedWidth);
-    APP_SETTINGS->setWindowHeight(_storedHeight);
+    if(_storedWidth>0 && _storedHeight>0) {
+        APP_SETTINGS->setWindowWidth(_storedWidth);
+        APP_SETTINGS->setWindowHeight(_storedHeight);
+    }
     if(APP_SETTINGS->isChanged())
         APP_SETTINGS->storeUserSettings();
 }
@@ -230,7 +234,7 @@ void ImageViewer::open(const QString &fileName, bool showErrorMessage)
         QFuture<void> future = QtConcurrent::run(this,&ImageViewer::loadImage,fileName);
         _loaderTask.setFuture(future);
 #else
-        setWindowTitle(QFileInfo(fileName).fileName() + " - " + QApplication::applicationName());
+//        setWindowTitle(QFileInfo(fileName).fileName() + " - " + QApplication::applicationName());
         QPixmap _image(fileName);
 //        QImage _image(fileName);
         if (_image.isNull()) {
@@ -389,25 +393,26 @@ void ImageViewer::zoomOut()
 
 void ImageViewer::normalSize()
 {
-    fitToWindowAct->setChecked(false);
 
-    imageLabel->adjustSize();
     scaleFactor = 1.0;
+    fitToWindowAct->setChecked(false);
+    //imageLabel->adjustSize();
+    setZoom();
 }
 
 //Одна заставляет выполнить вторую zoom, если они обе отмечены
 void ImageViewer::fitToWindow()
 {
-    if(fitToWindowAct->isChecked() && fitToImageAct->isChecked())
+    if(fitToWindowAct->isChecked())// && fitToImageAct->isChecked())
         fitToImageAct->setChecked(false);//activate(QAction::Trigger);//
     setZoom();
 }
 
 void ImageViewer::fitToImage()
 {
-    if(fitToWindowAct->isChecked()) {
-        if(fitToImageAct->isChecked())
-            fitToWindowAct->setChecked(false);//activate(QAction::Trigger);//
+    if(fitToImageAct->isChecked()) {
+//        if(fitToWindowAct->isChecked())
+          fitToWindowAct->setChecked(false);//activate(QAction::Trigger);//
         setZoom();
     }
 }
@@ -470,10 +475,15 @@ void ImageViewer::createActions()
     fullScreenAct->setShortcut(QKeySequence(Qt::CTRL+Qt::Key_Return));//,Qt::CTRL+Qt::Key_Enter));//tr("Ctrl+Return"));
     fullScreenAct->setCheckable(true);
 //    fullScreenAct->setShortcutContext(Qt::ApplicationShortcut);
+    //Хотел ещё Esc добавить, но хрен та там. Пришлось ещё один shortcut добавлять
     shortcut = new QShortcut(fullScreenAct->shortcut(),this);
     shortCuts.append(shortcut);
 
     connect(shortcut, SIGNAL(activated()), this,SLOT(changeModeKostil()));//fullScreenAct, SIGNAL(triggered()));
+    shortcut = new QShortcut(QKeySequence(Qt::Key_Escape),this);
+    shortCuts.append(shortcut);
+
+    connect(shortcut, SIGNAL(activated()), this,SLOT(changeModeKostil()));
     connect(fullScreenAct, SIGNAL(triggered()), this, SLOT(changeMode()));
 
     zoomInAct = new QAction(this);
@@ -599,6 +609,7 @@ void ImageViewer::createActions()
     grabGroup->addAction(grabScaleAct);
 
     customizeViewAct = new QAction(tr("Customize"),this);
+    customizeViewAct->setIcon(QIcon::fromTheme("configure"));
     connect(customizeViewAct, SIGNAL(triggered()), this, SLOT(customizeView()));
 
 
@@ -722,8 +733,9 @@ void ImageViewer::createMenus()
 
 void ImageViewer::scaleImage(double factor)
 {
-    if(imageLabel->pixmap() && !imageLabel->pixmap()->isNull()) {
+    if(imageLabel->pixmap() && !imageLabel->pixmap()->isNull() && scaleFactorLegal(factor)) {
 //        Q_ASSERT(pm);
+
         scaleFactor *= factor;
 
         imageLabel->resize(scaleFactor * imageLabel->pixmap()->size());
@@ -737,22 +749,38 @@ void ImageViewer::scaleImage(double factor)
 
         setInfoLabels(APP_FILE_ITERATOR->current());
         fitToWindowAct->setChecked(false);
+        setZoom();
     }
 }
 
-void ImageViewer::checkZoomInAct(double factor)
+inline bool ImageViewer::scaleFactorLegal(double factor) const
+{
+    if(factor>1.0)
+        return scaleFactorLegalHighBorder(scaleFactor*factor);
+    return scaleFactorLegalLowBorder(scaleFactor*factor);
+}
+
+bool ImageViewer::scaleFactorLegalLowBorder(double factor) const
+{
+    const QPixmap *pm = imageLabel->pixmap();
+    return pm->width()*factor > 3 && pm->height()*factor > 3;
+}
+
+bool ImageViewer::scaleFactorLegalHighBorder(double factor) const
 {
     const QPixmap *pm = imageLabel->pixmap();
     //8388608: 8 - bits in byte, memoryLimit() in megabytes
-    factor *= scaleFactor;
-    zoomInAct->setEnabled(factor<=APP_SETTINGS->scaleLimit() && factor*(pm->width() * pm->height()*pm->depth())/8388608 <= APP_SETTINGS->memoryLimit());
+    return factor<=APP_SETTINGS->scaleLimit() && factor*(pm->width() * pm->height()*pm->depth())/8388608 <= APP_SETTINGS->memoryLimit();
 }
 
-void ImageViewer::checkZoomOutAct(double factor)
+inline void ImageViewer::checkZoomInAct(double factor)
 {
-    const QPixmap *pm = imageLabel->pixmap();
-    factor *= scaleFactor;
-    zoomOutAct->setEnabled( pm->width()*factor > 3 && pm->height()*factor > 3);
+    zoomInAct->setEnabled(scaleFactorLegalHighBorder(factor*scaleFactor));
+}
+
+inline void ImageViewer::checkZoomOutAct(double factor)
+{
+    zoomOutAct->setEnabled(scaleFactorLegalLowBorder(factor*scaleFactor));
 }
 
 //! [24]
@@ -1158,10 +1186,13 @@ void ImageViewer::startMoovingNormalSize()
 
 void ImageViewer::startMoovingScale()
 {
-    _oldScaleFactor = scaleFactor;
-    scaleFactor = APP_SETTINGS->grabScale();
     startMoovingDefault();
-    setZoom();
+    _oldScaleFactor = scaleFactor;
+
+    if(scaleFactorLegalLowBorder(APP_SETTINGS->grabScale()) && scaleFactorLegalHighBorder(APP_SETTINGS->grabScale())) {
+        scaleFactor = APP_SETTINGS->grabScale();
+        setZoom();
+    }
 
 }
 
@@ -1241,6 +1272,8 @@ void ImageViewer::showContextMenu(const QPoint& point)
     myMenu.addAction(normalSizeAct);
     myMenu.addSeparator();
     myMenu.addAction(fitToWindowAct);
+    if(fitToImageAct->isEnabled())
+        myMenu.addAction(fitToImageAct);
 
     myMenu.exec(globalPos);
 }

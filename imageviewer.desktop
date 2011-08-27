@@ -1,11 +1,15 @@
 [Desktop Entry]
 Encoding=UTF-8
-Version=1.0
+Version=0.1.4
 Type=Application
 Terminal=false
 Name=Image Viewer
-Exec=/opt/usr/bin/imageviewer
-Icon=imageviewer
+Exec=/usr/local/bin/icview
+Icon=icview
 X-Window-Icon=
 X-HildonDesk-ShowInToolbar=true
+Comment=A simple image viewer
+Categories=Graphics;RasterGraphics;Viewer;
+MimeType=image/jpeg;image/png;image/bmp;image/x-eps;image/x-ico;image/x-portable-bitmap;image/x-portable-graymap;image/x-portable-pixmap;image/x-xbitmap;image/x-xpixmap;
 X-Osso-Type=application/x-executable
+InitialPreference=8

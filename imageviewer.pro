@@ -17,7 +17,7 @@ SOURCES       = imageviewer.cpp \
 #sources.path = $$[QT_INSTALL_EXAMPLES]/widgets/imageviewer
 #INSTALLS += target sources
 
-TARGET  =   icviewer
+TARGET  =   icview
 
 symbian: include($$PWD/../../symbianpkgrules.pri)
 

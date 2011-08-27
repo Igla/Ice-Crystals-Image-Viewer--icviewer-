@@ -209,6 +209,10 @@ private:
 
     QRect getContentRect() const;
 
+    bool scaleFactorLegal(double factor) const;
+    bool scaleFactorLegalLowBorder(double factor) const;
+    bool scaleFactorLegalHighBorder(double factor) const;
+
     MMovingLabel *imageLabel;
     QScrollArea *scrollArea;
     double scaleFactor,_oldScaleFactor;
