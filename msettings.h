@@ -54,7 +54,7 @@ public:
 
     inline GrabMode grabMode() const { return _grabMode; }
     inline void setGrabMode(GrabMode mode) {
-        if(GrabMode()!=mode) {
+        if(grabMode()!=mode) {
             _grabMode = mode;
             setChanged();
         }

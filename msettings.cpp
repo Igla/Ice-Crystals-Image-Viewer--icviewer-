@@ -24,7 +24,7 @@ static const QString STYLE_NAME("style.main");
 static const QString GLOBAL_SETTINGS_PATH("/etc/ice-crystals/");
 static const QString USER_SETTINGS_PATH(QDir::homePath()+ "/.config/ice-crystals/ICImageViewer/");
 #define GLOBAL_SETTINGS_CONF (GLOBAL_SETTINGS_PATH+CONF_NAME)
-#define USER_SETTINGS_CONF (USER_SETTINGS_PATH+CONF_NAME)
+static const QString USER_SETTINGS_CONF(USER_SETTINGS_PATH+CONF_NAME);
 
 #define GLOBAL_SETTINGS_STYLE (GLOBAL_SETTINGS_PATH+STYLE_NAME)
 #define USER_SETTINGS_STYLE (USER_SETTINGS_PATH+STYLE_NAME)
@@ -150,36 +150,28 @@ QDir::SortFlags MSettings::getSortFlags(int value)
         ret = QDir::Unsorted;
     }
     else {
-        if((value & QDir::Name) == QDir::Name)
+        //Порядок важен
+        if((value&QDir::Unsorted)==QDir::Unsorted)
+            ret = QDir::Unsorted;
+        else
+        if((value&QDir::Type)==QDir::Type)
+            ret = QDir::Type;
+        else
+        if((value&(QDir::Name|QDir::Time|QDir::Size))==QDir::Name)
             ret = QDir::Name;
         else
-        if((value & QDir::Time) == QDir::Time)
-            ret = QDir::Time;
-        else
-        if((value & QDir::Size) == QDir::Size)
+        if((value&(QDir::Name|QDir::Time|QDir::Size))==QDir::Size)
             ret = QDir::Size;
         else
-        if((value & QDir::Type) == QDir::Type)
-            ret = QDir::Type;
+        if((value&(QDir::Name|QDir::Time|QDir::Size))==QDir::Time)
+            ret = QDir::Time;
 
-        if((value & QDir::Unsorted) == QDir::Unsorted)
-            ret |= QDir::Unsorted;
-
-        if((value & QDir::DirsFirst) == QDir::DirsFirst)
-            ret |= QDir::DirsFirst;
-        else
-        if((value & QDir::DirsLast) == QDir::DirsLast)
-            ret |= QDir::DirsLast;
-
-        if((value & QDir::Reversed) == QDir::Reversed)
+        if((value&QDir::Reversed)==QDir::Reversed)
             ret |= QDir::Reversed;
 
-        if((value & QDir::IgnoreCase) == QDir::IgnoreCase)
+        if((value&QDir::IgnoreCase)!=QDir::IgnoreCase)
             ret |= QDir::IgnoreCase;
 
-
-//        if((value & QDir::LocaleAware) == QDir::LocaleAware)
-//            ret |= QDir::LocaleAware;
     }
     ret |= QDir::LocaleAware;
 

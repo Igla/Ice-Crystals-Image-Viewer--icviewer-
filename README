@@ -15,7 +15,7 @@ make
 
 Доступны следующие объекты:
   viewArea - центральный виджет окна(QScrollArea)
-  imageWidhet - виджет, отвечающий за отрисовку изображения
+  imageWidget - виджет, отвечающий за отрисовку изображения
 
 Пример:
   #viewArea { background-image: url("/home/igla/Картинки/шахматы.png"); }

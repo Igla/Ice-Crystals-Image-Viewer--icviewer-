@@ -914,7 +914,7 @@ void ImageViewer::setFullScreenMode()
     this->setWindowState(this->windowState() | Qt::WindowFullScreen);
     this->menuBar()->setVisible(false);
     activateShortcuts(true);
-    if(scrollArea->styleSheet().isEmpty())
+    if(styleSheet().isEmpty())
         scrollArea->setBackgroundRole(QPalette::Shadow);
     _frameStyle = scrollArea->frameStyle();
     scrollArea->setFrameStyle(QFrame::NoFrame);
@@ -925,7 +925,7 @@ void ImageViewer::setWindowMode()
     this->setWindowState(this->windowState() ^ Qt::WindowFullScreen);
     activateShortcuts(false);
     this->menuBar()->setVisible(true);
-    if(scrollArea->styleSheet().isEmpty())
+    if(styleSheet().isEmpty())
         scrollArea->setBackgroundRole(QPalette::Dark);
     scrollArea->setFrameStyle(_frameStyle);
 }
@@ -964,7 +964,12 @@ void ImageViewer::resizeEvent(QResizeEvent* event)
 
 void ImageViewer::mouseDoubleClickEvent(QMouseEvent *ev)
 {
-    changeMode();
+    //Пусть двойной клик работает, только в default grab mode
+    //Может стоит что-то придумать по этому поводу. Например, в startMoving таймер ставить
+    //на короткое время, так чтобы его можно было отменить, если мышь отпустили до
+    //того как он сработал(endMoving).
+    if(grabDefaultAct->isChecked())
+        changeMode();
     ev->accept();
 }
 
@@ -994,17 +999,17 @@ void ImageViewer::loadSortSettings()
     if((flags&QDir::Unsorted)==QDir::Unsorted)
         sortUnsortAct->setChecked(true);
     else
-    if((flags&QDir::Name)==QDir::Name)
-        sortNameAct->setChecked(true);
-    else
-    if((flags&QDir::Size)==QDir::Size)
-        sortSizeAct->setChecked(true);
-    else
     if((flags&QDir::Type)==QDir::Type)
         sortTypeAct->setChecked(true);
     else
-    if((flags&QDir::Time)==QDir::Time)
-        sortTimeAct->setChecked(true);    
+    if((flags&(QDir::Name|QDir::Time|QDir::Size))==QDir::Name)
+        sortNameAct->setChecked(true);
+    else
+    if((flags&(QDir::Name|QDir::Time|QDir::Size))==QDir::Size)
+        sortSizeAct->setChecked(true);
+    else
+    if((flags&(QDir::Name|QDir::Time|QDir::Size))==QDir::Time)
+        sortTimeAct->setChecked(true);
 
     if((flags&QDir::Reversed)==QDir::Reversed)
         sortReversedAct->setChecked(true);
@@ -1322,7 +1327,7 @@ inline void ImageViewer::setViewStyle()
     else {
         imageLabel->setObjectName("imageWidget");
         scrollArea->setObjectName("viewArea");
-        scrollArea->setStyleSheet(style);
+        setStyleSheet(style);
     }
 
 
