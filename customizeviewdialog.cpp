@@ -88,6 +88,7 @@ void CustomizeViewDialog::init(const MSettings &settings)
     ui->maxScaleSpinBox->setValue(settings.scaleLimit());
     ui->grabScaleSpinBox->setValue(settings.grabScale());
     ui->scaleStepSpinBox->setValue(settings.scaleDelta());
+    ui->grabSpeedSpinBox->setValue(settings.mouseGrabSpeed());
 }
 
 void CustomizeViewDialog::changeScaleStepSilderValue()
@@ -144,6 +145,11 @@ double CustomizeViewDialog::scaleStep() const
 double CustomizeViewDialog::grabScale() const
 {
     return ui->grabScaleSpinBox->value();
+}
+
+double CustomizeViewDialog::grabSpeed() const
+{
+    return ui->grabSpeedSpinBox->value();
 }
 
 

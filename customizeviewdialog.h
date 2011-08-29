@@ -34,6 +34,8 @@ public:
     double maxScale() const;
     double scaleStep() const;
     double grabScale() const;
+    double grabSpeed() const;
+
 
 private slots:
     void changeScaleStepSilderValue();

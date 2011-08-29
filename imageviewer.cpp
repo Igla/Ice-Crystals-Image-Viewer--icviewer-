@@ -1209,6 +1209,7 @@ void ImageViewer::acceptCustomizeDlg(const CustomizeViewDialog &dlg)
     APP_SETTINGS->setScaleLimit(dlg.maxScale());
     APP_SETTINGS->setScaleDelta(dlg.scaleStep());
     APP_SETTINGS->setGrabScale(dlg.grabScale());
+    APP_SETTINGS->setMouseGrabSpeed(dlg.grabSpeed());
 
     setZoomLabels();
 }
