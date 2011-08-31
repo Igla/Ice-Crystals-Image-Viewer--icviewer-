@@ -76,7 +76,7 @@ int zoom_fl = ZOOM_DEFAULT;
 float zoom_back;
 
 ImageViewer::ImageViewer():showEventFunc(&ImageViewer::firstShowEvent),
-    _storedWidth(0),_storedHeight(0),
+    _storedWidth(0),_storedHeight(0),_lastFileFilterNum(0),
     scaleFactor(1.0),scrollValH(0.0f),scrollValV(0.0f)
 {
 
@@ -175,13 +175,42 @@ void ImageViewer::setEmptyLabel(const QString &label) {
     imageLabel->adjustSize();
 }
 
+QString getSupportedImagesFilter()
+{
+    QStringList list(APP_FILE_ITERATOR->nameFilters());
+    QString ret;
+    if(!list.isEmpty()) {
+        QListIterator<QString> it(list);
+        ret = it.next();
+        while(it.hasNext()) {
+            ret += " " + it.next();
+        }
+    }
+    return ret;
+}
+
 void ImageViewer::open()
 {
-    QString fileName = QFileDialog::getOpenFileName(this,
-            tr("Open File"), APP_FILE_ITERATOR->currentPath());
-    if(!fileName.isNull()) {
-        APP_FILE_ITERATOR->setStartPoint(fileName);
-        open(APP_FILE_ITERATOR->current(),true);
+    QString fileName;
+    QStringList filters;
+    QFileDialog dialog(this,tr("Open File"), APP_FILE_ITERATOR->currentPath());
+    filters << tr("Image files") +" ("+ getSupportedImagesFilter() +")"
+            << tr("Any Files") +" (*)";
+    if(_lastFileFilterNum!=0)
+        filters.swap(0,1);
+
+    dialog.setAcceptMode(QFileDialog::AcceptOpen);
+    dialog.setNameFilters(filters);
+    dialog.setFileMode(QFileDialog::ExistingFile);
+    dialog.setViewMode(QFileDialog::Detail);
+
+    if(dialog.exec()==QDialog::Accepted) {
+        _lastFileFilterNum = dialog.selectedNameFilter().startsWith(tr("Image files")) ? 0:1;
+        filters = dialog.selectedFiles();
+        if(!(filters.isEmpty() || (fileName=filters.first()).isNull())) {
+            APP_FILE_ITERATOR->setStartPoint(fileName);
+            open(APP_FILE_ITERATOR->current(),true);
+        }
     }
 }
 

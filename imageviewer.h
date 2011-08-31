@@ -276,6 +276,8 @@ private:
     QCursor _lastCursor;
     QList<QShortcut*> shortCuts;
 
+    int _lastFileFilterNum;
+
     int _frameStyle;
     int _storedWidth,_storedHeight;
 

@@ -36,7 +36,7 @@ simulator: warning(This example might not fully work on Simulator platform)
 DEFINES += __LOAD_IN_MAIN_THREAD
 
 debug {
-    DEFINES += __DEBUG
+#    DEFINES += __DEBUG
 }
 
 FORMS += \

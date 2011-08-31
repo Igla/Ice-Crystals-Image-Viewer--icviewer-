@@ -42,6 +42,10 @@
 #include <QImageReader>
 #include <QStringBuilder>
 
+#ifdef __DEBUG
+#include <QDebug>
+#endif
+
 #include "imageviewer.h"
 #include "msettings.h"
 #include "mfileiterator.h"
@@ -93,6 +97,7 @@ void initFileIterator(int argc, char *argv[])
 //Например SVG. Ну, пока оставим как есть
 void setImageFilter(QStringList &filters)
 {
+
     QList<QByteArray> formats = QImageReader::supportedImageFormats();
 
     for(int i=0;i<formats.size();i++){
